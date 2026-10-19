@@ -1,0 +1,81 @@
+{
+  "version": "v0.3.1-adaptive-10K",
+  "mode": "ADAPTIVE_LIVE_10K - SMALL_1k_10k",
+  "frozen_hash": "d83fe34155adfabe",
+  "portfolio": 10000,
+  "tier": "SMALL_1k_10k",
+  "tier_config": {
+    "portfolio_min": 1000,
+    "portfolio_max": 10000,
+    "risk_pct": 0.01,
+    "max_pos": 2,
+    "max_per_pct": 0.5,
+    "daily_loss": 0.03,
+    "min_lot": 1,
+    "description": "1k-10k: 2 ตัว, 50%, risk 1.5%, lot 1 หุ้น"
+  },
+  "live_params": {
+    "min_score": 75,
+    "risk_pct": 0.01,
+    "stop_atr_mult": 1.8,
+    "take_profit_atr_mult": 2.5,
+    "max_positions": 2,
+    "max_per_position_pct": 0.5,
+    "daily_loss_limit_pct": 0.03,
+    "max_trades_per_day": 2
+  },
+  "applied_at": "2026-10-18T13:08:16.486060+00:00",
+  "read_only": false,
+  "broker_enabled": true,
+  "auto_adjust": true,
+  "audit": "append-only audit.log",
+  "fixes": "FIX 11 points",
+  "fix_1_3_applied": {
+    "at": "2026-10-18T13:41:41.827040+00:00",
+    "fix1": "MSFT -0.53% -> 27% allocation (was 52%)",
+    "fix2": "Lot 83 same -> PTT 69, AOT 37, CPALL 46, SCB 27 per ATR",
+    "fix3": "THB portfolio use PTT/AOT/CPALL not AAPL/MSFT",
+    "profit_based_rules_updated": "loss -1-0% -8%, loss <-1% -25% to make loser reduce clearly"
+  },
+  "stocks": {
+    "SET": [
+      "PTT",
+      "AOT",
+      "CPALL",
+      "SCB",
+      "DELTA",
+      "ADVANC",
+      "BDMS",
+      "PTTEP"
+    ],
+    "prices": {
+      "PTT": 32.5,
+      "AOT": 58.25,
+      "CPALL": 62.0,
+      "SCB": 110.0,
+      "DELTA": 80.0,
+      "ADVANC": 220.0,
+      "BDMS": 28.0,
+      "PTTEP": 150.0
+    },
+    "atr": {
+      "PTT": 0.8,
+      "AOT": 1.5,
+      "CPALL": 1.2,
+      "SCB": 2.0,
+      "DELTA": 2.0,
+      "ADVANC": 2.5,
+      "BDMS": 0.6,
+      "PTTEP": 3.0
+    }
+  },
+  "lot_examples": {
+    "formula": "shares = (portfolio * risk%) / (1.8 * ATR) = (10000*1%)/(1.8*ATR)",
+    "PTT_ATR0.8": "100/1.44=69 sh cost 2242฿",
+    "AOT_ATR1.5": "100/2.7=37 sh cost 2155฿",
+    "CPALL_ATR1.2": "100/2.16=46 sh cost 2852฿",
+    "SCB_ATR2.0": "100/3.6=27 sh cost 2970฿",
+    "AAPL_ATR2.1": "100/3.78=26 sh cost $4810 = 173k THB เกินพอร์ต -> ต้องใช้ USD portfolio",
+    "MSFT_ATR4.5": "100/8.1=12 sh cost $4514 = 162k THB เกินพอร์ต"
+  }
+}
