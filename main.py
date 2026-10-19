@@ -1,4 +1,3 @@
-
 """
 AI Trading Core v0.3.1
 Single-file FastAPI application
@@ -20,7 +19,7 @@ from typing import Deque, Dict, List, Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 
@@ -31,6 +30,23 @@ from pydantic import BaseModel, Field
 VERSION = "0.3.1"
 PORTFOLIO_BASE = 10_000
 FROZEN_AT = "2025-01-15T00:00:00Z"
+
+# Live params (10K portfolio, SMALL_1k_10k tier)
+LIVE_PARAMS = {
+    "min_score": 75,
+    "risk_pct": 0.01,
+    "stop_atr_mult": 1.8,
+    "take_profit_atr_mult": 2.5,
+    "max_positions": 2,
+}
+
+# Sample watchlist prices (paper only)
+PRICES = {
+    "PTT":   {"price": 32.5,  "atr": 0.8, "shares": 69, "cost": 2242},
+    "AOT":   {"price": 58.25, "atr": 1.5, "shares": 37, "cost": 2155},
+    "CPALL": {"price": 62.0,  "atr": 1.2, "shares": 46, "cost": 2852},
+    "SCB":   {"price": 110.0, "atr": 2.0, "shares": 27, "cost": 2970},
+}
 
 
 def _compute_config_hash() -> str:
@@ -254,6 +270,72 @@ app.add_middleware(
 
 
 # =========================================================
+# ROOT — LIVE DASHBOARD
+# =========================================================
+
+@app.get("/", response_class=HTMLResponse)
+def home():
+    check = CONFIG.self_check()
+    match_color = "#0a0" if check["match"] else "#c00"
+    match_text = "OK" if check["match"] else "MISMATCH"
+
+    rows = "".join(
+        f"<tr><td>{sym}</td><td>{d['price']}</td>"
+        f"<td>{d['atr']}</td><td>{d['shares']}</td>"
+        f"<td>{d['cost']:,}</td></tr>"
+        for sym, d in PRICES.items()
+    )
+
+    return f"""
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <title>AI Trading Core LIVE</title>
+      <style>
+        body {{ font-family: -apple-system, system-ui, sans-serif;
+                padding: 24px; max-width: 820px; margin: auto; }}
+        h1 {{ color: #111; }}
+        table {{ border-collapse: collapse; width: 100%; margin-top: 12px; }}
+        th, td {{ border: 1px solid #ddd; padding: 8px 10px;
+                  text-align: right; }}
+        th:first-child, td:first-child {{ text-align: left; }}
+        th {{ background: #f6f6f6; }}
+        code {{ background: #f3f3f3; padding: 2px 6px; border-radius: 4px; }}
+        a {{ color: #0366d6; text-decoration: none; }}
+        a:hover {{ text-decoration: underline; }}
+      </style>
+    </head>
+    <body>
+      <h1>✅ AI Trading Core LIVE</h1>
+      <p>Version <code>{VERSION}</code> &mdash;
+         Portfolio <b>{PORTFOLIO_BASE:,}฿</b> &mdash;
+         Paper trading: <b>{PAPER_TRADING}</b></p>
+      <p>Hash: <code>{check['actual']}</code> —
+         <span style="color:{match_color};font-weight:bold">
+         {match_text}</span></p>
+      <p>Config: SMALL_1k_10k &mdash; risk {LIVE_PARAMS['risk_pct']*100:.0f}%,
+         stop {LIVE_PARAMS['stop_atr_mult']}×ATR,
+         take {LIVE_PARAMS['take_profit_atr_mult']}×ATR,
+         max {LIVE_PARAMS['max_positions']} positions,
+         min score {LIVE_PARAMS['min_score']}</p>
+      <p>Formula: <code>shares = (10000 × 1%) / (1.8 × ATR)</code></p>
+      <table>
+        <tr><th>Symbol</th><th>Price</th><th>ATR</th>
+            <th>Shares</th><th>Cost (฿)</th></tr>
+        {rows}
+      </table>
+      <p style="margin-top:16px">
+        <a href="/health">/health</a> &middot;
+        <a href="/ready">/ready</a> &middot;
+        <a href="/config">/config</a> &middot;
+        <a href="/docs">/docs</a>
+      </p>
+    </body>
+    </html>
+    """
+
+
+# =========================================================
 # HEALTH / READINESS
 # =========================================================
 
@@ -387,7 +469,18 @@ def get_config():
         "frozen_at": FROZEN_AT,
         "hash": check,
         "paper_trading": PAPER_TRADING,
+        "live_params": LIVE_PARAMS,
+        "tier": "SMALL_1k_10k",
     }
+
+
+# =========================================================
+# PRICES (paper reference data)
+# =========================================================
+
+@app.get("/api/prices")
+def prices():
+    return PRICES
 
 
 # =========================================================
