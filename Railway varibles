@@ -1,3 +1,4 @@
   BROKER_MODE=LIVE
-  BROKER_API_KEY=your_settrade_key
-  BROKER_SECRET=your_secret
+BROKER_API_KEY=your_key
+BROKER_SECRET=your_secret
+BROKER_URL=https://api.settrade.com  หรือ https://api.binance.com
