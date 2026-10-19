@@ -1,0 +1,8 @@
+@app.on_event("startup")
+def _startup_check():
+    cfg = FrozenConfig()
+    if not cfg.verify():
+        raise RuntimeError(
+            f"Frozen config hash mismatch: "
+            f"expected={cfg.LIVE_CONFIG_10K_HASH} got={...}"
+        )
