@@ -1,0 +1,4 @@
+# SETTRADE ตัวอย่าง
+requests.post("https://api.settrade.com/api/order", 
+  json={"symbol":sym,"volume":shares,"price":s["price"]},
+  headers={"Authorization": f"Bearer {BROKER_API_KEY}"})
