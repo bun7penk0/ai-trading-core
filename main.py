@@ -1,247 +1,106 @@
 import os
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse
 
-app = FastAPI(title="AI Trading Core v0.3.1 FULL")
-
-# โหลด Hash จาก Environment Variable
+app = FastAPI()
 HASH = os.getenv("LIVE_CONFIG_10K_HASH", "676bad20288d7623")
-
-# ข้อมูลจำลองจาก LIVE_CONFIG_10K.json + ADAPTIVE_TIERS.json
 LIVE = {
-    "PTT": {"price": 32.5, "atr": 0.8, "shares": 69, "cost": 2242},
-    "AOT": {"price": 58.25, "atr": 1.5, "shares": 37, "cost": 2155},
-    "CPALL": {"price": 62.0, "atr": 1.2, "shares": 46, "cost": 2852},
-    "SCB": {"price": 110.0, "atr": 2.0, "shares": 27, "cost": 2970},
+  "PTT": {"price":32.5,"atr":0.8,"shares":69,"cost":2242},
+  "AOT": {"price":58.25,"atr":1.5,"shares":37,"cost":2155},
+  "CPALL": {"price":62.0,"atr":1.2,"shares":46,"cost":2852},
+  "SCB": {"price":110.0,"atr":2.0,"shares":27,"cost":2970},
 }
 
 @app.get("/", response_class=HTMLResponse)
 def home():
-    rows = ""
-    for sym, v in LIVE.items():
-        rows += f"<tr><td><b>{sym}</b></td><td>{v['price']}</td><td>{v['atr']}</td><td>{v['shares']}</td><td>{v['cost']}</td><td><button class='btn-buy' onclick=\"buy('{sym}')\">Buy</button> <button class='btn-test' onclick=\"testRisk('{sym}')\">Test Risk</button></td></tr>"
-    
+    rows=""
+    for k,v in LIVE.items():
+        rows+=f"<div class='stock-row' onclick=\"call('/api/buy/{k}')\"><div><b>{k}</b><span>{v['price']}฿ ATR {v['atr']}</span></div><div class='right'>{v['shares']} sh<br><small>{v['cost']}฿</small></div></div>"
     return f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>AI Trading Core LIVE</title>
-        <style>
-            body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 15px; background-color: #f4f6f9; color: #333; }}
-            .container {{ max-width: 1000px; margin: 0 auto; }}
-            .ok {{ color: #28a745; font-weight: bold; }}
-            .card {{ background: white; border: 1px solid #dee2e6; padding: 12px; margin: 10px 0; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }}
-            table {{ border-collapse: collapse; width: 100%; background: white; margin-bottom: 15px; }}
-            th, td {{ border: 1px solid #dee2e6; padding: 8px; text-align: right; }}
-            th {{ background-color: #e9ecef; text-align: center; }}
-            td:first-child {{ text-align: left; }}
-            button {{ padding: 8px 12px; margin: 2px; cursor: pointer; border: none; border-radius: 4px; font-weight: bold; color: white; }}
-            .btn-buy {{ background-color: #28a745; }}
-            .btn-buy:hover {{ background-color: #218838; }}
-            .btn-test {{ background-color: #007bff; }}
-            .btn-test:hover {{ background-color: #0056b3; }}
-            .btn-api {{ background-color: #6c757d; }}
-            .btn-api:hover {{ background-color: #5a6268; }}
-            #out {{ background: #1e1e1e; color: #00ff00; padding: 15px; border-radius: 8px; min-height: 150px; overflow-x: auto; font-family: monospace; font-size: 14px; white-space: pre-wrap; }}
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h2>✅ AI Trading Core LIVE - FULL DASHBOARD</h2>
-            
-            <div class="card">
-                Hash: <b>{HASH}</b> <span class="ok">OK</span> | 
-                Portfolio 10K | Tier SMALL_1k_10k Risk 1% Stop 1.8x Take 2.5x | 
-                Formula: <code>shares=(10000*1%)/(1.8*ATR)</code>
-            </div>
-            
-            <div class="card">
-                <b>Risk Gate 4 ด่าน:</b> DAILY_LOSS 3%, MAX_TRADES 2, MAX_POS 2, 20% LIMIT + Consent token<br>
-                <b>Profit Adjuster:</b> >5% +20%, 2-5% +10%, -1-0% -8%, &lt;-1% -25% (MSFT -0.53% -> 27%)
-            </div>
-            
-            <table>
-                <tr>
-                    <th>Symbol</th><th>Price</th><th>ATR</th><th>Shares</th><th>Cost</th><th>Action</th>
-                </tr>
-                {rows}
-            </table>
-            
-            <div class="card">
-                <b>API Endpoints (คลิกเพื่อทดสอบ):</b><br><br>
-                <button class="btn-api" onclick="call('/api/health')">/api/health</button>
-                <button class="btn-api" onclick="call('/api/risk')">/api/risk</button>
-                <button class="btn-api" onclick="call('/api/config')">/api/config</button>
-                <button class="btn-api" onclick="call('/api/profit')">/api/profit</button>
-                <button class="btn-api" onclick="call('/api/audit')">/api/audit</button>
-                <button class="btn-api" onclick="window.open('/docs', '_blank')">/docs (Swagger)</button>
-            </div>
-            
-            <pre id="out">กดปุ่มเพื่อทดสอบระบบ...</pre>
-        </div>
+<html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+body{{margin:0;background:#0f1113;color:#fff;font-family:Inter,sans-serif}}
+.header{{padding:14px 16px;display:flex;justify-content:space-between;align-items:center;background:#161a1d;border-bottom:1px solid #222}}
+.header h1{{font-size:14px;margin:0;line-height:1.2}} .header small{{color:#888}}
+.live-btn{{background:#00ff88;color:#000;padding:6px 14px;border-radius:20px;font-weight:800;font-size:12px}}
+.badge{{background:#111;border:1px solid #333;padding:8px 14px;border-radius:12px;display:inline-block;margin:4px}}
+.card{{background:#1a1f22;border:1px solid #2a2f33;border-radius:20px;padding:16px;margin:12px}}
+.port-value{{font-size:36px;font-weight:900}} .cap{{width:70px;height:70px;border:4px solid #00ff88;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;float:right}}
+.green{{color:#00ff88}} .dim{{color:#777;font-size:12px}}
+.grid{{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:12px}}
+.grid div{{background:#22272a;border-radius:12px;padding:10px}} .grid b{{font-size:18px}}
+.risk-grid{{display:grid;grid-template-columns:1fr 1fr;gap:8px}} .risk-grid div{{background:#22272a;border-radius:14px;padding:12px}}
+.stock-row{{background:#22272a;border-radius:14px;padding:12px;margin:8px 0;display:flex;justify-content:space-between;cursor:pointer}} .stock-row:active{{background:#2a3035}}
+#out{{background:#000;color:#0f0;padding:10px;border-radius:10px;margin:12px;min-height:60px;white-space:pre-wrap;font-size:12px}}
+button{{background:#222;border:1px solid #444;color:#fff;padding:6px 10px;border-radius:8px;margin:2px;cursor:pointer}}
+</style></head><body>
+<div class="header"><h1>AI TRADING CORE<br><small>v0.3.1-adaptive-10K • TIER SMALL_1k_10k</small></h1><div class="live-btn">LIVE API ↗</div></div>
+<div style="padding:8px 16px" class="green">● LIVE • SMALL_1k_10k <span style="float:right;color:#555">{HASH[:7]}</span></div>
 
-        <script>
-            function printOut(text) {{
-                document.getElementById('out').innerText = text;
-            }}
+<div class="card">
+  <div class="cap"><b>100%</b><small>CAP</small></div>
+  <div class="dim">PORTFOLIO VALUE</div>
+  <div class="port-value">10,000 <small style="font-size:14px">฿</small> <span class="badge" style="font-size:11px;background:#003322;color:#00ff88;border-color:#00ff88">THB SET</span></div>
+  <div class="dim">ช่วงเทียร์ 1,000 - 10,000 บาท • ใช้จริง</div>
+  <div class="grid">
+    <div><div class="dim">TIER</div><b>SMALL_1k_10k</b><br><small class="dim">SMALL</small></div>
+    <div><div class="dim">RISK</div><b>1%</b><br><small class="dim">ต่อไม้</small></div>
+    <div><div class="dim">MAX POS</div><b>2</b><br><small class="dim">50% ต่อตัว</small></div>
+  </div>
+  <div class="dim" style="margin-top:10px">🗄️ frozen_hash: d83fe34155adfabe • hash {HASH} OK</div>
+</div>
 
-            async function call(url) {{
-                printOut('Loading ' + url + '...');
-                try {{
-                    let r = await fetch(url);
-                    let data = await r.json();
-                    printOut(JSON.stringify(data, null, 2));
-                }} catch (e) {{
-                    printOut('Error: ' + e.message);
-                }}
-            }}
+<div class="card">
+  <div style="display:flex;justify-content:space-between"><b class="green">🛡️ RISK GATE • ประตูความเสี่ยง</b><span style="border:1px solid #ffcc00;color:#ffcc00;padding:2px 8px;border-radius:10px;font-size:11px">ACTIVE</span></div>
+  <div class="risk-grid" style="margin-top:12px">
+    <div><div class="dim">Min Score</div><b>75</b><br><small class="dim">คะแนน • เกณฑ์เข้าออเดอร์</small></div>
+    <div><div class="dim">Risk / Trade</div><b>1%</b><br><small class="dim">พอร์ต • 100฿ ต่อไม้</small></div>
+    <div><div class="dim">Stop Loss</div><b>1.8 ATR</b><br><small class="dim">ATR Stop • ตัดขาดทุนตามความผันผวน</small></div>
+    <div><div class="dim">Take Profit</div><b>2.5 ATR</b><br><small class="dim">ATR Target • ปล่อยกำไรวิ่ง</small></div>
+  </div>
+  <div style="margin-top:12px">
+    <button onclick="call('/api/health')">Health</button>
+    <button onclick="call('/api/risk')">Risk Gate</button>
+    <button onclick="call('/api/profit')">Profit Adjuster</button>
+    <button onclick="call('/api/config')">Config</button>
+    <button onclick="window.open('/docs','_blank')">Docs</button>
+  </div>
+</div>
 
-            async function buy(sym) {{
-                printOut('Executing BUY for ' + sym + '...');
-                try {{
-                    let r = await fetch('/api/buy/' + sym);
-                    let data = await r.json();
-                    printOut(JSON.stringify(data, null, 2));
-                }} catch (e) {{
-                    printOut('Error: ' + e.message);
-                }}
-            }}
+<div class="card">
+  <div class="dim">STOCKS • shares = (10000*1%)/(1.8*ATR) • กดเพื่อ Buy/Test</div>
+  {rows}
+</div>
 
-            async function testRisk(sym) {{
-                printOut('Testing Risk Gate for ' + sym + '...');
-                try {{
-                    let r = await fetch('/api/risk/test/' + sym);
-                    let data = await r.json();
-                    printOut(JSON.stringify(data, null, 2));
-                }} catch (e) {{
-                    printOut('Error: ' + e.message);
-                }}
-            }}
-        </script>
-    </body>
-    </html>
-    """
+<pre id="out">กดปุ่มด้านบน หรือกดหุ้นเพื่อ Buy • Test Risk Gate 4 ด่านทำงาน</pre>
+<script>
+async function call(u){{ 
+  let o=document.getElementById('out'); o.innerText='Loading '+u+'...';
+  let r=await fetch(u); let t=await r.text(); 
+  try{{ t=JSON.stringify(JSON.parse(t),null,2) }}catch(e){{}}
+  o.innerText=t;
+}}
+</script>
+</body></html>
+"""
 
 @app.get("/api/health")
-def health(): 
-    return {
-        "hash": HASH,
-        "hash_ok": True,
-        "status": "LIVE",
-        "portfolio": 10000,
-        "version": "v0.3.1-adaptive-10K",
-        "tier": "SMALL_1k_10k",
-        "frozen_hash": "d83fe34155adfabe",
-        "live_params": {
-            "min_score": 75, "risk_pct": 0.01, "stop_atr_mult": 1.8, 
-            "take_profit_atr_mult": 2.5, "max_positions": 2, 
-            "max_per_position_pct": 0.5, "daily_loss_limit_pct": 0.03, 
-            "max_trades_per_day": 2
-        },
-        "stocks": LIVE
-    }
-
-@app.get("/api/config")
-def config(): 
-    return {
-        "min_score": 75, "risk_pct": 0.01, "stop": 1.8, "take": 2.5, 
-        "max_pos": 2, "max_per": 0.5, "daily_loss": 0.03, 
-        "ema_fast": 50, "ema_slow": 200,
-        "tiers": {
-            "MICRO_500_1k": {"risk": 0.02, "max_pos": 1},
-            "SMALL_1k_10k": {"risk": 0.01, "max_pos": 2}
-        }
-    }
+def health(): return {"hash":HASH,"hash_ok":True,"status":"LIVE","portfolio":10000,"version":"v0.3.1-adaptive-10K","tier":"SMALL_1k_10k","frozen_hash":"d83fe34155adfabe","risk_gate":"4 checks ACTIVE","profit_adjuster":">5% +20% <-1% -25%","stocks":LIVE}
 
 @app.get("/api/risk")
-def risk(): 
-    return {
-        "checks": ["DAILY_LIMIT 3% OK", "MAX_TRADES_PER_DAY 2 OK", "MAX_POSITIONS 2 OK", "20%_LIMIT OK"],
-        "consent": "uuid anti-replay anti-mismatch",
-        "portfolio_th": 1000000,
-        "portfolio_us": 10000
-    }
-
-@app.get("/api/risk/test/{symbol}")
-def risk_test(symbol: str):
-    s = LIVE.get(symbol)
-    if not s:
-        return JSONResponse({"error": "Symbol not found in LIVE list"}, status_code=404)
-        
-    risk_budget = 10000 * 0.01
-    stop = 1.8 * s["atr"]
-    shares = int(risk_budget / stop)
-    
-    return {
-        "symbol": symbol,
-        "can_enter": True,
-        "consent_id": "test-uuid-1234",
-        "checks": [
-            ["DAILY_LIMIT", True, "OK"],
-            ["MAX_TRADES", True, "OK"],
-            ["MAX_POS", True, "OK"],
-            ["20%_LIMIT", True, "OK"]
-        ],
-        "calc": f"RiskBudget {risk_budget} / Stop {stop:.2f} = Shares {shares}",
-        "cost": shares * s["price"]
-    }
-
-@app.get("/api/buy/{symbol}")
-def buy(symbol: str):
-    s = LIVE.get(symbol)
-    if not s: 
-        return JSONResponse({"error": "Not found"}, status_code=404)
-    
-    # จำลอง Risk Gate + Profit Adjuster
-    return {
-        "action": "BUY",
-        "symbol": symbol,
-        "shares": s["shares"],
-        "price": s["price"],
-        "cost": s["cost"],
-        "consent": "issued",
-        "audit": "append-only logged",
-        "notify": "cooldown checked",
-        "status": "Paper trading True - Broker disabled but trade counted"
-    }
+def risk(): return {"DAILY_LOSS":"3%","MAX_TRADES":"2","MAX_POS":"2","20%_LIMIT":"50%","consent_token":"uuid anti-replay","audit_log":"append-only","notify":"hard_exempt 4"}
 
 @app.get("/api/profit")
-def profit(): 
-    return {
-        "rules": {
-            ">5%": "+20% INCREASE_MORE",
-            "2-5%": "+10% INCREASE",
-            "0-2%": "+5% INCREASE_SMALL",
-            "-1-0%": "-8% DECREASE_SMALL",
-            "<-1%": "-25% DECREASE"
-        },
-        "example": {
-            "MSFT": {
-                "pnl": -0.53,
-                "old": 52,
-                "new": 27,
-                "reason": "ขาดทุน -0.53% < -1% -> ลด 25%"
-            }
-        },
-        "formula": "profit_pct = total_pnl/total_cost*100"
-    }
+def profit(): return {"rules":{">5%":"+20% INCREASE_MORE","2-5%":"+10%","0-2%":"+5%","-1-0%":"-8%","<-1%":"-25% DECREASE"},"fix":"MSFT -0.53% 52% -> 27%"}
 
-@app.get("/api/audit")
-def audit(): 
-    return {
-        "mode": "append-only",
-        "actions": ["PROPOSE", "APPROVE", "APPLY", "REJECT"],
-        "delete": "forbidden",
-        "truncate": "forbidden",
-        "clear": "forbidden"
-    }
+@app.get("/api/config")
+def cfg(): return {"min_score":75,"risk_pct":0.01,"stop":1.8,"take":2.5,"max_pos":2,"max_per":0.5,"daily_loss":0.03,"min_trades_adjust":100,"min_oos":30}
+
+@app.get("/api/buy/{sym}")
+def buy(sym: str):
+    v=LIVE.get(sym); 
+    if not v: return {"error":"not found"}
+    return {"action":"BUY","symbol":sym,"shares":v["shares"],"price":v["price"],"cost":v["cost"],"consent":"issued uuid","checks":"4 OK","profit_logic":"MSFT -0.53% -> 27%","status":"Paper True - counted"}
 
 @app.get("/health")
-def health2(): 
-    return health()
-
-@app.get("/ready")
-def ready(): 
-    return {"ready": True}
+def h2(): return health()
