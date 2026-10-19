@@ -1,0 +1,3 @@
+  BROKER_MODE=LIVE
+  BROKER_API_KEY=your_settrade_key
+  BROKER_SECRET=your_secret
