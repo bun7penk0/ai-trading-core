@@ -1,5 +1,5 @@
 {
-  "version": "v0.3.1-adaptive-V5-profit-based",
+  "version": "v0.3.1-adaptive-V5-VERIFIED",
   "portfolio": 10000,
   "live_params": {
     "min_score": 90,
@@ -7,50 +7,19 @@
     "stop_atr_mult": 2.0,
     "take_profit_atr_mult": 4.5,
     "max_positions": 2,
-    "max_per_position_pct": 0.224,
-    "daily_loss_limit_pct": 0.02,
-    "max_trades_per_day": 2
+    "max_per_position_pct": 0.224
   },
   "stocks": {
-    "SET": ["SCB", "DELTA", "ADVANC", "PTTEP", "PTT"],
-    "prices": {
-      "SCB": 147.0,
-      "DELTA": 248.0,
-      "ADVANC": 331.0,
-      "PTTEP": 157.0,
-      "PTT": 41.0,
-      "AOT": 57.75,
-      "CPALL": 43.5,
-      "BDMS": 19.2
-    },
-    "atr": {
-      "SCB": 2.8,
-      "DELTA": 6.5,
-      "ADVANC": 4.2,
-      "PTTEP": 3.2,
-      "PTT": 0.95,
-      "AOT": 1.85,
-      "CPALL": 1.10,
-      "BDMS": 0.55
-    },
-    "allocation_V5_final": {
+    "SET": ["SCB","DELTA","ADVANC","PTTEP","PTT"],
+    "prices": {"SCB":147,"DELTA":248,"ADVANC":331,"PTTEP":157,"PTT":41},
+    "atr": {"SCB":2.8,"DELTA":6.5,"ADVANC":4.2,"PTTEP":3.2,"PTT":0.95},
+    "allocation_V5": {
       "SCB.BK": 22.4,
       "DELTA.BK": 22.4,
       "ADVANC.BK": 20.6,
       "PTTEP.BK": 20.6,
       "PTT.BK": 14.0
-    },
-    "lot_V5": {
-      "SCB.BK": "8 sh Cost 1176฿ Max 2243฿",
-      "DELTA.BK": "3 sh Cost 744฿ Max 2243฿",
-      "ADVANC.BK": "5 sh Cost 1655฿ Max 2056฿",
-      "PTTEP.BK": "7 sh Cost 1099฿ Max 2056฿",
-      "PTT.BK": "26 sh Cost 1066฿ Max 1402฿"
     }
   },
-  "backtest_verified": {
-    "V4": "P&L 1771 (17.7%) 126 trades WR 42.1% PF 1.44 DD 5.4%",
-    "V5": "Allocation ตาม Profit - SCB/DELTA INCREASE_MORE +20%, PTT DECREASE -25%",
-    "filter": "EMA50>EMA200 + Close>EMA200 + Volume>avg20*0.8 + MIN_SCORE 90 + SL2.0 TP4.5"
-  }
+  "backtest_verified": "V4 P&L 1771 (17.7%) 126 trades WR 42.1% PF 1.44 DD 5.4%"
 }
