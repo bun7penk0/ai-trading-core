@@ -1,4 +1,16 @@
-"""
+"import os, sys, pathlib
+# === FIX PYTHONPATH for Railway ===
+ROOT = pathlib.Path(__file__).parent.resolve()
+CANDIDATES = [
+    ROOT,
+    ROOT / "ai_trading_core_v031_draft",
+    pathlib.Path("/app"),
+    pathlib.Path("/app/ai_trading_core_v031_draft"),
+]
+for p in CANDIDATES:
+    sp = str(p)
+    if p.exists() and sp not in sys.path:
+        sys.path.insert(0, sp)"
 main.py V5 - Deploy-Ready
 - ThreadingHTTPServer (แก้ #1 blocking)
 - #2 SKIP ถ้า shares<1 ไม่ force
