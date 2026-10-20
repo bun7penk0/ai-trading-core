@@ -1,1 +1,55 @@
-python /mnt/data/run_backtest.py
+# Terminal V5 - คำสั่งที่ใช้บ่อย
+# ใช้กับ ai_trading_core_v031_draft
+
+# ===================== ในเครื่อง =====================
+# 1. สร้าง venv
+python -m venv venv
+venv\Scripts\activate  # Windows
+# source venv/bin/activate  # Mac/Linux
+
+# 2. ติดตั้ง deps
+pip install -r requirements.txt
+
+# 3. รัน verify ก่อน push (สำคัญ!)
+python FrozenConfig.verify
+python scripts/verify_v5.py
+
+# 4. รัน Blacktest เพื่อคำนวณ V5 allocation
+python Blacktest
+
+# 5. ทดสอบ main.py แบบ dry-run
+python main.py --mode paper --config data/LIVE_CONFIG_10K.json
+
+# 6. Commit + Push
+git add data/LIVE_CONFIG_10K.json data/ADAPTIVE_TIERS.json
+git commit -m "feat(V5): hash 2d1e37ec7288c756 - SCB/DELTA +20%, PTT -25%"
+git push origin main
+
+# ===================== บน Railway =====================
+# ดู logs
+railway logs --follow
+
+# ดู variables
+railway variables
+
+# Restart service
+railway restart
+
+# เช็ค health
+curl https://your-app.railway.app/health
+curl https://your-app.railway.app/config
+
+# ดู allocation ที่ระบบโหลด
+# ต้องเห็น: SCB 22.4% DELTA 22.4% ADVANC 20.6% PTTEP 20.6% PTT 14.0%
+
+# ===================== ฉุกเฉิน =====================
+# ถ้า config ผิด → rollback
+git revert HEAD
+git push origin main
+
+# ถ้า Railway ค้าง → clear volume
+railway volume delete
+railway volume create --mount /app/data
+
+# ถ้า daily loss เกิน 2% → ระบบหยุดเอง
+# ดูใน logs: "DAILY_LIMIT_HIT"
