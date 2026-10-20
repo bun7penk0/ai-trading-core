@@ -1,0 +1,2 @@
+def verify(self) -> bool:
+    return self._calc_file_hash() == "2d1e37ec7288c756"
