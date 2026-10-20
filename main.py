@@ -1,17 +1,14 @@
 """AI Trading Core v0.3.1 — Draft (read-only)
-main.py V5 - Deploy-Ready
-- ThreadingHTTPServer (แก้ #1 blocking)
-- #2 SKIP ถ้า shares<1 ไม่ force
-- #4 SKIP ถ้า risk_shares<=0 ไม่ fallback
-- #5 heartbeat stale -> 503
-- #8 LOG_DIR รองรับ Railway Volume
-- AllocationValidator pre-flight
-- Scheduler every 24h rebalance if trades>=30
-- hash 2d1e37ec7288c756
+main.py V5 - Deploy-Ready (Single-File Edition)
 """
 __version__ = "0.3.1-draft"
 
 import os, sys, pathlib
+import json, hashlib, logging, threading, uuid, time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from datetime import datetime, timezone, date
+from pathlib import Path
+from dataclasses import dataclass, field
 
 # === FIX PYTHONPATH for Railway ===
 ROOT = pathlib.Path(__file__).parent.resolve()
@@ -26,15 +23,126 @@ for p in CANDIDATES:
     if p.exists() and sp not in sys.path:
         sys.path.insert(0, sp)
 
-import json, hashlib, logging
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from datetime import datetime, timezone, date
-from pathlib import Path
-
 log = logging.getLogger("main")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
-# === Load config with hash check ===
+# ==========================================
+# ส่วนที่ 1: ดึงโค้ดจาก core/audit_log.py มารวม
+# ==========================================
+class AuditEntry:
+    def __init__(self, payload): 
+        self.payload = payload
+
+class AuditLog:
+    def __init__(self, path="logs/audit.log"):
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._entries = []
+        if self.path.exists():
+            try:
+                for line in self.path.read_text(encoding="utf-8").splitlines():
+                    if line.strip():
+                        self._entries.append(AuditEntry(json.loads(line)))
+            except Exception:
+                pass
+
+    def append(self, actor, action, target, payload, reason=""):
+        rec = {"actor": actor, "action": action, "target": target, "payload": payload, "reason": reason}
+        self._entries.append(AuditEntry(rec))
+        with self.path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
+    def all(self):
+        return self._entries
+
+# ==========================================
+# ส่วนที่ 2: ดึงโค้ดจาก core/risk_gate.py มารวม
+# ==========================================
+@dataclass
+class Consent:
+    consent_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    symbol: str = ""
+    shares: int = 0
+    price: float = 0.0
+
+class RiskGate:
+    def __init__(self, max_risk_pct: float = 0.02, atr_mult: float = 2.0):
+        self.max_risk_pct = max_risk_pct
+        self.atr_mult = atr_mult
+
+    def calc_position_size(self, price: float, atr: float, currency: str = "THB"):
+        if price <= 0 or atr <= 0:
+            return 0, "invalid price/atr"
+        risk_budget = 10000 * self.max_risk_pct
+        stop_dist = self.atr_mult * atr
+        shares = int(risk_budget // stop_dist) if stop_dist > 0 else 0
+        return shares, f"risk_budget={risk_budget:.0f} stop_dist={stop_dist:.2f}"
+
+    def can_enter(self, symbol, shares, price, atr, currency, date_str):
+        checks = []
+        if shares <= 0: checks.append("shares<=0")
+        if price <= 0: checks.append("price<=0")
+        if checks: return None, checks
+        return Consent(symbol=symbol, shares=shares, price=price), checks
+
+# ==========================================
+# ส่วนที่ 3: ดึงโค้ดจาก core/allocation_validator.py มารวม
+# ==========================================
+class AllocationValidator:
+    def __init__(self, cfg: dict):
+        self.cfg = cfg or {}
+
+    def validate(self):
+        errs = []
+        if not self.cfg.get("version"): errs.append("missing 'version'")
+        if not self.cfg.get("portfolio"): errs.append("missing 'portfolio'")
+        lp = self.cfg.get("live_params") or {}
+        if "max_positions" not in lp: errs.append("missing live_params.max_positions")
+        if "max_per_position_pct" not in lp: errs.append("missing live_params.max_per_position_pct")
+        return (len(errs) == 0, errs)
+
+# ==========================================
+# ส่วนที่ 4: ดึงโค้ดจาก core/scheduler.py มารวม
+# ==========================================
+_sched_stop = threading.Event()
+_sched_thr = None
+
+def _sched_loop(config_path, trade_log_path, min_trades, check_hours):
+    interval = max(60, int(check_hours) * 3600)
+    log.info(f"scheduler started interval={interval}s min_trades={min_trades}")
+    while not _sched_stop.wait(interval):
+        log.info("scheduler tick (TODO: rebalance logic)")
+
+def start_scheduler(config_path, trade_log_path, min_trades=30, check_hours=24):
+    global _sched_thr
+    _sched_stop.clear()
+    _sched_thr = threading.Thread(target=_sched_loop, args=(config_path, trade_log_path, min_trades, check_hours), daemon=True)
+    _sched_thr.start()
+    return _sched_thr
+
+def stop_scheduler():
+    _sched_stop.set()
+    if _sched_thr: _sched_thr.join(timeout=5)
+    log.info("scheduler stopped")
+
+# ==========================================
+# ส่วนที่ 5: ดึงโค้ดจาก telemetry/event_logger.py มารวม
+# ==========================================
+class EventLogger:
+    def __init__(self, mode: str = "LIVE", path: str = "logs/events.log"):
+        self.mode = mode
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+
+    def log(self, category, symbol=None, action=None, payload=None):
+        rec = {"ts": datetime.now(timezone.utc).isoformat(), "mode": self.mode, "category": category, "symbol": symbol, "action": action, "payload": payload or {}}
+        with self.path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
+
+# ==========================================
+# ส่วนที่ 6: โค้ดหลักของ main.py เดิม (ไม่ต้องสร้าง core แล้ว)
+# ==========================================
 def load_live_config():
     cfg_path = Path(os.getenv("CONFIG_PATH","data/LIVE_CONFIG_10K.json"))
     try:
@@ -51,17 +159,10 @@ def load_live_config():
 
 live_config = load_live_config()
 
-# V5 Allocation Final
 allocation_v5 = {"SCB.BK":0.224,"DELTA.BK":0.224,"ADVANC.BK":0.206,"PTTEP.BK":0.206,"PTT.BK":0.14}
 real_prices = {"SCB.BK":147,"DELTA.BK":248,"ADVANC.BK":331,"PTTEP.BK":157,"PTT.BK":41}
 real_atr = {"SCB.BK":2.8,"DELTA.BK":6.5,"ADVANC.BK":4.2,"PTTEP.BK":3.2,"PTT.BK":0.95}
 PORTFOLIO = 10000
-
-from core.risk_gate import RiskGate
-from core.audit_log import AuditLog
-from core.allocation_validator import AllocationValidator
-from core.scheduler import start_scheduler, stop_scheduler
-from telemetry.event_logger import EventLogger
 
 risk_gate = RiskGate()
 log_dir = Path(os.getenv("LOG_DIR","logs"))
@@ -102,7 +203,6 @@ def run_startup_allocation():
         budget = PORTFOLIO * alloc_pct
         shares = int(budget // price) if price>0 else 0
         
-        # FIX #2: ถ้า shares <1 -> SKIP ไม่ force 1
         if shares < 1:
             log.info(f"{sym} SKIP allocation too small budget={budget:.0f} price={price}")
             events.log(category="RISK_REJECT", symbol=sym, action="SKIP_SMALL_ALLOC", payload={"budget":budget,"price":price})
@@ -114,7 +214,6 @@ def run_startup_allocation():
             log.error(f"{sym} risk calc failed {e}")
             continue
         
-        # FIX #4: ถ้า risk_shares <=0 -> SKIP ไม่ fallback
         if risk_shares <= 0:
             log.warning(f"{sym} SKIP risk_gate 0 {risk_msg}")
             events.log(category="RISK_REJECT", symbol=sym, action="RISK_ZERO", payload={"risk_shares":risk_shares})
