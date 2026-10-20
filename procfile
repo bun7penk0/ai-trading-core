@@ -1,1 +1,16 @@
-web: sh -c 'uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers'
+# Procfile V5 - Railway
+# hash 2d1e37ec7288c756
+
+web: python main.py
+
+# คำอธิบาย:
+# web: คือ process หลักที่ Railway จะ expose port ให้
+# python main.py จะ:
+# 1. โหลด LIVE_CONFIG_10K.json ตรวจสอบ hash 2d1e37ec7288c756
+# 2. รัน AllocationValidator
+# 3. start_scheduler (เช็คทุก 24h ถ้า trades >=30 ถึง rebalance)
+# 4. run_startup_allocation (V5: SCB 22.4% DELTA 22.4% etc)
+# 5. เปิด ThreadingHTTPServer ที่ 0.0.0.0:$PORT
+
+# ถ้าคุณมี worker แยก (ไม่จำเป็นสำหรับ V5)
+# worker: python core/profit_based_adjuster.py
