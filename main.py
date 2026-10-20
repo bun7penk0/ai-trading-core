@@ -1,4 +1,6 @@
-"import os, sys, pathlib
+"""AI Trading Core v0.3.1 — Draft (read-only)"""
+__version__ = "0.3.1-draft"
+import os, sys, pathlib
 # === FIX PYTHONPATH for Railway ===
 ROOT = pathlib.Path(__file__).parent.resolve()
 CANDIDATES = [
