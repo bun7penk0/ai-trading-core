@@ -1,0 +1,35 @@
+# Dockerfile V5 - Railway Deploy
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# ติดตั้ง timezone ไทย + deps ระบบ
+RUN apt-get update && apt-get install -y \
+    tzdata \
+    && ln -fs /usr/share/zoneinfo/Asia/Bangkok /etc/localtime \
+    && dpkg-reconfigure -f noninteractive tzdata \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV TZ=Asia/Bangkok
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
+# Copy requirements ก่อนเพื่อ cache layer
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy โค้ดทั้งหมด
+COPY . .
+
+# สร้างโฟลเดอร์ data/logs สำหรับ Railway Volume
+RUN mkdir -p data logs
+
+# Expose port Railway จะ inject PORT เอง
+EXPOSE 8000
+
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD python -c "import requests; requests.get('http://localhost:${PORT:-8000}/health', timeout=5)" || exit 1
+
+# Start command - Railway จะใช้ Procfile ถ้ามี แต่ Dockerfile เป็น fallback
+CMD ["python", "main.py"]
