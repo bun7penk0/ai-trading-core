@@ -1,25 +1,14 @@
 {
-  "version": "v0.3.1-adaptive-V5-VERIFIED",
+  "version": "v0.3.1-adaptive-V5",
+  "frozen_hash": "676bad20288d7623",
   "portfolio": 10000,
-  "live_params": {
-    "min_score": 90,
-    "risk_pct": 0.005,
-    "stop_atr_mult": 2.0,
-    "take_profit_atr_mult": 4.5,
-    "max_positions": 2,
-    "max_per_position_pct": 0.224
-  },
+  "tier": "SMALL_1k_10k",
+  "live_params": {"min_score": 90, "risk_pct": 0.005, "stop_atr_mult": 2.0, "take_profit_atr_mult": 4.5, "max_positions": 2, "max_per_position_pct": 0.224},
+  "backtest_verified": "V4 P&L 1771 (17.7%) 126 trades WR42.1% PF1.44 DD5.4%",
   "stocks": {
     "SET": ["SCB","DELTA","ADVANC","PTTEP","PTT"],
     "prices": {"SCB":147,"DELTA":248,"ADVANC":331,"PTTEP":157,"PTT":41},
     "atr": {"SCB":2.8,"DELTA":6.5,"ADVANC":4.2,"PTTEP":3.2,"PTT":0.95},
-    "allocation_V5": {
-      "SCB.BK": 22.4,
-      "DELTA.BK": 22.4,
-      "ADVANC.BK": 20.6,
-      "PTTEP.BK": 20.6,
-      "PTT.BK": 14.0
-    }
-  },
-  "backtest_verified": "V4 P&L 1771 (17.7%) 126 trades WR 42.1% PF 1.44 DD 5.4%"
+    "allocation_V5": {"SCB.BK":22.4,"DELTA.BK":22.4,"ADVANC.BK":20.6,"PTTEP.BK":20.6,"PTT.BK":14.0}
+  }
 }
