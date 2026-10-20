@@ -1,4 +1,27 @@
+# requirements.txt V5 - Deploy Ready
+# hash 2d1e37ec7288c756
 
-fastapi==0.115.0
-uvicorn[standard]==0.30.6
+# === Core ===
+python-dotenv==1.0.1
 pydantic==2.9.2
+requests==2.32.3
+
+# === Trading / Data ===
+pandas==2.2.3
+numpy==1.26.4
+
+# === Scheduler (rebalance ทุก 24h) ===
+APScheduler==3.10.4
+
+# === Logging / Telemetry ===
+structlog==24.4.0
+
+# === Web server (ถ้า main.py มี health endpoint) ===
+# ไม่ต้อง uvicorn เพราะใช้ ThreadingHTTPServer ใน stdlib
+
+# === Testing ===
+pytest==8.3.3
+pytest-cov==6.0.0
+
+# === Dev ===
+black==24.10.0
