@@ -1,4 +1,23 @@
-/mnt/data/csv/PTT.csv
-/mnt/data/csv/AOT.csv
-...
-/mnt/data/csv/PTTEP.csv
+# mnt data V5 - Railway Volume Mount Instructions
+
+# Railway Dashboard → Service → Volumes → Add Volume
+# Mount Path: /app/data
+# Size: 1GB (พอสำหรับ 10k portfolio)
+
+# โครงสร้างใน /app/data ที่ต้องมี:
+# /app/data/
+#   ├── LIVE_CONFIG_10K.json (hash 2d1e37ec7288c756)
+#   ├── ADAPTIVE_TIERS.json (copy จาก LIVE_CONFIG_10K.json)
+#   ├── trade_log.json (เริ่มเป็น [])
+#   ├── profit_stats.json (เริ่มเป็น {})
+#   └── audit.log (append-only)
+
+# Environment Variables ที่ต้องตั้ง:
+# LOG_DIR=/app/data
+# CONFIG_PATH=/app/data/LIVE_CONFIG_10K.json
+# TRADE_LOG_PATH=/app/data/trade_log.json
+
+# คำสั่งเช็คว่า mount สำเร็จ:
+# railway ssh
+# ls -lh /app/data
+# ต้องเห็น LIVE_CONFIG_10K.json
