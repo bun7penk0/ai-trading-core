@@ -1,4 +1,6 @@
-FROM python:3.11-slim
+"""AI Trading Core v0.3.1 — Draft (read-only)"""
+__version__ = "0.3.1-draft"
+ python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
 WORKDIR /app
 COPY requirements.txt .
