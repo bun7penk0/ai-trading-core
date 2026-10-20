@@ -1,0 +1,75 @@
+"""Audit Log v0.3.1 — Append-only (ห้ามลบ) — V5 LOG_DIR=/app/data fix"""
+from dataclasses import dataclass
+from typing import List, Dict, Optional
+from datetime import datetime, timezone
+import json
+import os
+from pathlib import Path
+
+class AuditLogDeleteError(Exception):
+    pass
+
+@dataclass
+class AuditEntry:
+    ts: str
+    actor: str
+    action: str
+    target: str
+    payload: Dict
+    reason: str = ""
+
+class AuditLog:
+    def __init__(self, path: Optional[str] = None):
+        # FIX #8: ใช้ LOG_DIR จาก env
+        if path is None:
+            log_dir = os.getenv("LOG_DIR", "logs")
+            Path(log_dir).mkdir(parents=True, exist_ok=True)
+            path = str(Path(log_dir) / "audit.log")
+        self._entries: List[AuditEntry] = []
+        self._path = path
+        # สร้างไฟล์ถ้ายังไม่มี
+        Path(self._path).parent.mkdir(parents=True, exist_ok=True)
+        if not Path(self._path).exists():
+            Path(self._path).write_text("", encoding="utf-8")
+
+    def append(self, actor: str, action: str, target: str,
+               payload: Dict, reason: str = "") -> AuditEntry:
+        e = AuditEntry(
+            ts=datetime.now(timezone.utc).isoformat(),
+            actor=actor, action=action, target=target,
+            payload=dict(payload), reason=reason,
+        )
+        self._entries.append(e)
+        if self._path:
+            self._persist(e)
+        return e
+
+    def _persist(self, e: AuditEntry):
+        with open(self._path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(e.__dict__, ensure_ascii=False) + "\n")
+
+    def all(self) -> List[AuditEntry]:
+        # โหลดจากไฟล์ด้วยถ้ามี
+        if Path(self._path).exists():
+            try:
+                lines = Path(self._path).read_text(encoding="utf-8").strip().split("\n")
+                for line in lines[-100:]: # เอา 100 อันล่าสุด
+                    if line:
+                        data = json.loads(line)
+                        self._entries.append(AuditEntry(**data))
+            except: pass
+        return list(self._entries)
+
+    def filter(self, actor: Optional[str] = None, action: Optional[str] = None) -> List[AuditEntry]:
+        return [e for e in self._entries
+                if (actor is None or e.actor == actor)
+                and (action is None or e.action == action)]
+
+    def delete(self, *_args, **_kwargs):
+        raise AuditLogDeleteError("Audit log is append-only — delete() is forbidden")
+
+    def truncate(self, *_args, **_kwargs):
+        raise AuditLogDeleteError("Audit log is append-only — truncate() is forbidden")
+
+    def clear(self, *_args, **_kwargs):
+        raise AuditLogDeleteError("Audit log is append-only — clear() is forbidden")
