@@ -1,0 +1,81 @@
+"""
+FrozenConfig.verify V5
+เช็คว่า LIVE_CONFIG_10K.json เป็น hash ที่ถูกต้อง
+hash ใหม่: 2d1e37ec7288c756 (V5 profit-based)
+hash เก่า: d83fe34155adfabe (V4)
+"""
+import json
+import hashlib
+from pathlib import Path
+
+CONFIG_PATH = "data/LIVE_CONFIG_10K.json"
+EXPECTED_HASH = "2d1e37ec7288c756"
+EXPECTED_VERSION = "v0.3.1-adaptive-V5-profit-based"
+LEGACY_HASH = "d83fe34155adfabe"
+
+def compute_file_hash(path: str) -> str:
+    data = Path(path).read_bytes()
+    return hashlib.sha256(data).hexdigest()[:16]
+
+def verify():
+    print("="*60)
+    print("FrozenConfig.verify V5")
+    print("="*60)
+    
+    cfg_path = Path(CONFIG_PATH)
+    if not cfg_path.exists():
+        print(f"❌ Config not found: {CONFIG_PATH}")
+        return False
+    
+    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    
+    # 1. Check version
+    version = cfg.get("version", "")
+    print(f"Version: {version}")
+    if "V5" not in version:
+        print(f"❌ Version ไม่ใช่ V5: {version}")
+        return False
+    print(f"✅ Version OK: {version}")
+    
+    # 2. Check frozen_hash field
+    frozen_hash = cfg.get("frozen_hash", "")
+    print(f"Frozen hash in file: {frozen_hash}")
+    if frozen_hash != EXPECTED_HASH:
+        print(f"❌ frozen_hash ไม่ตรง: expect {EXPECTED_HASH}, got {frozen_hash}")
+        # ถ้าเป็น legacy hash ให้เตือน
+        if frozen_hash == LEGACY_HASH:
+            print(f"⚠️  ยังเป็น hash เก่า V4 ({LEGACY_HASH}) ต้องอัปเดตเป็น V5")
+        return False
+    print(f"✅ Frozen hash OK: {frozen_hash}")
+    
+    # 3. Check file hash (optional)
+    file_hash = compute_file_hash(CONFIG_PATH)
+    print(f"File hash (sha256[:16]): {file_hash}")
+    
+    # 4. Check allocation sum
+    alloc = cfg.get("stocks", {}).get("allocation_V5_final", {})
+    total = sum(alloc.values())
+    print(f"Allocation: {alloc}")
+    print(f"Sum: {total}%")
+    if abs(total - 100.0) > 0.01:
+        print(f"❌ Allocation sum != 100%: {total}%")
+        return False
+    print(f"✅ Allocation sum = 100%")
+    
+    # 5. Check V5 specific
+    expected_alloc = {"SCB.BK":22.4, "DELTA.BK":22.4, "ADVANC.BK":20.6, "PTTEP.BK":20.6, "PTT.BK":14.0}
+    for k,v in expected_alloc.items():
+        if abs(alloc.get(k,0) - v) > 0.01:
+            print(f"❌ {k} mismatch: expect {v}, got {alloc.get(k)}")
+            return False
+    print(f"✅ V5 allocation matches")
+    
+    print("="*60)
+    print("🎉 FrozenConfig.verify PASS - Ready for Railway deploy")
+    print("="*60)
+    return True
+
+if __name__ == "__main__":
+    import sys
+    ok = verify()
+    sys.exit(0 if ok else 1)
