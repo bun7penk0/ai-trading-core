@@ -1,0 +1,12 @@
+{
+  "version": "v0.3.1-adaptive-V5",
+  "frozen_hash": "676bad20288d7623",
+  "stocks_mapping": {
+    "THB": {
+      "SET": ["SCB","DELTA","ADVANC","PTTEP","PTT","AOT","CPALL","BDMS"],
+      "prices": {"SCB":147,"DELTA":248,"ADVANC":331,"PTTEP":157,"PTT":41,"AOT":57.75,"CPALL":43.5,"BDMS":19.2},
+      "atr": {"SCB":2.8,"DELTA":6.5,"ADVANC":4.2,"PTTEP":3.2,"PTT":0.95,"AOT":1.85,"CPALL":1.1,"BDMS":0.55},
+      "allocation_V5": {"SCB":22.4,"DELTA":22.4,"ADVANC":20.6,"PTTEP":20.6,"PTT":14.0}
+    }
+  }
+}
