@@ -1,12 +1,45 @@
 {
-  "version": "v0.3.1-adaptive-V5",
-  "frozen_hash": "676bad20288d7623",
-  "stocks_mapping": {
-    "THB": {
-      "SET": ["SCB","DELTA","ADVANC","PTTEP","PTT","AOT","CPALL","BDMS"],
-      "prices": {"SCB":147,"DELTA":248,"ADVANC":331,"PTTEP":157,"PTT":41,"AOT":57.75,"CPALL":43.5,"BDMS":19.2},
-      "atr": {"SCB":2.8,"DELTA":6.5,"ADVANC":4.2,"PTTEP":3.2,"PTT":0.95,"AOT":1.85,"CPALL":1.1,"BDMS":0.55},
-      "allocation_V5": {"SCB":22.4,"DELTA":22.4,"ADVANC":20.6,"PTTEP":20.6,"PTT":14.0}
-    }
-  }
+  "version": "v0.3.1-adaptive-V5-profit-based",
+  "mode": "ADAPTIVE_LIVE_10K",
+  "frozen_hash": "2d1e37ec7288c756",
+  "legacy_hash": "d83fe34155adfabe",
+  "frozen_at": "2026-10-20T07:32:57Z",
+  "portfolio": 10000,
+  "tier": "SMALL_1k_10k",
+  "tier_config": {
+    "portfolio_min": 1000,
+    "portfolio_max": 10000,
+    "risk_pct": 0.01,
+    "max_pos": 2,
+    "max_per_pct": 0.224,
+    "daily_loss": 0.02,
+    "min_lot": 1,
+    "description": "V5: SCB 22.4% DELTA 22.4% ADVANC 20.6% PTTEP 20.6% PTT 14.0% profit-based"
+  },
+  "live_params": {
+    "min_score": 75,
+    "risk_pct": 0.01,
+    "stop_atr_mult": 1.8,
+    "take_profit_atr_mult": 2.5,
+    "max_positions": 2,
+    "max_per_position_pct": 0.224,
+    "daily_loss_limit_pct": 0.02,
+    "max_trades_per_day": 2
+  },
+  "stocks": {
+    "SET": ["SCB","DELTA","ADVANC","PTTEP","PTT"],
+    "prices": {"SCB":147,"DELTA":248,"ADVANC":331,"PTTEP":157,"PTT":41},
+    "atr": {"SCB":2.8,"DELTA":6.5,"ADVANC":4.2,"PTTEP":3.2,"PTT":0.95},
+    "allocation_V5_final": {"SCB.BK":22.4,"DELTA.BK":22.4,"ADVANC.BK":20.6,"PTTEP.BK":20.6,"PTT.BK":14.0},
+    "allocation_V5_detail": {
+      "SCB.BK": "22.4% P&L 714 WR52%",
+      "DELTA.BK": "22.4% P&L 855 WR48%",
+      "ADVANC.BK": "20.6% P&L 277 WR38%",
+      "PTTEP.BK": "20.6% P&L 112 WR36%",
+      "PTT.BK": "14.0% P&L -185 WR29%"
+    },
+    "lot_calc": "shares = floor(portfolio*alloc/price) - risk_gate min(shares, risk_shares)",
+    "backtest": "V4 P&L 1771 (17.7%) 126 trades WR42.1% PF1.44 DD5.4% - hypothesis, forward test pending V5"
+  },
+  "applied_at": "2026-10-20T07:32:57.186981+00:00"
 }
