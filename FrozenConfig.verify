@@ -1,6 +1,0 @@
-def verify(self) -> bool:
-    """hash ทั้งไฟล์ main.py (ไม่รวมบรรทัด hash ตัวเอง)"""
-    p = Path(__file__)
-    data = p.read_bytes()
-    h = hashlib.sha256(data).hexdigest()[:16]
-    return h == self.LIVE_CONFIG_10K_HASH
