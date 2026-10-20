@@ -1,6 +1,5 @@
-"""AI Trading Core v0.3.1 — Draft (read-only)"""
-__version__ = "0.3.1-draft"
- requirements.txt V5 - Deploy Ready
+# AI Trading Core v0.3.1 — Draft (read-only)
+# requirements.txt V5 - Deploy Ready
 # hash 2d1e37ec7288c756
 
 # === Core ===
