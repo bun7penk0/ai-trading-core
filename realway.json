@@ -1,6 +1,32 @@
 {
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "dockerfile",
+    "dockerfilePath": "Dockerfile"
+  },
   "deploy": {
-    "healthcheckPath": "/api/health",
-    "healthcheckTimeout": 30
+    "startCommand": "python main.py",
+    "healthcheckPath": "/health",
+    "healthcheckTimeout": 100,
+    "restartPolicyType": "on_failure",
+    "restartPolicyMaxRetries": 10
+  },
+  "environments": {
+    "production": {
+      "variables": {
+        "CONFIG_PATH": "data/LIVE_CONFIG_10K.json",
+        "ADAPTIVE_TIERS_PATH": "data/ADAPTIVE_TIERS.json",
+        "TRADE_LOG_PATH": "data/trade_log.json",
+        "LOG_DIR": "/app/data",
+        "PORTFOLIO": "10000",
+        "LIVE_CONFIG_HASH": "2d1e37ec7288c756",
+        "MAX_POSITIONS": "2",
+        "MAX_PER_POSITION_PCT": "0.224",
+        "REBALANCE_MIN_TRADES": "30",
+        "REBALANCE_CHECK_HOURS": "24",
+        "TZ": "Asia/Bangkok",
+        "PYTHONUNBUFFERED": "1"
+      }
+    }
   }
 }
