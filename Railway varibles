@@ -1,0 +1,38 @@
+# Railway Variables V5 - hash 2d1e37ec7288c756
+# เอาไปวางใน Railway → Project → Variables
+
+# === Core Config ===
+CONFIG_PATH=data/LIVE_CONFIG_10K.json
+ADAPTIVE_TIERS_PATH=data/ADAPTIVE_TIERS.json
+TRADE_LOG_PATH=data/trade_log.json
+PORTFOLIO=10000
+ENV=production
+TZ=Asia/Bangkok
+
+# === V5 Allocation (profit-based) ===
+# SCB 22.4% DELTA 22.4% ADVANC 20.6% PTTEP 20.6% PTT 14.0%
+LIVE_CONFIG_HASH=2d1e37ec7288c756
+LEGACY_HASH=d83fe34155adfabe
+
+# === Risk ===
+MAX_POSITIONS=2
+MAX_PER_POSITION_PCT=0.224
+DAILY_LOSS_LIMIT_PCT=0.02
+RISK_PCT=0.01
+MAX_TRADES_PER_DAY=2
+
+# === Scheduler ===
+REBALANCE_MIN_TRADES=30
+REBALANCE_CHECK_HOURS=24
+
+# === Logs ===
+LOG_DIR=/app/data
+PYTHONUNBUFFERED=1
+
+# === Port (Railway auto-inject) ===
+PORT=8000
+
+# === Broker (ถ้ามี) ===
+# BROKER_API_KEY=xxxxx
+# BROKER_API_SECRET=xxxxx
+# BROKER_MODE=paper  # paper ก่อน แล้วค่อย live
