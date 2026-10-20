@@ -1,81 +1,56 @@
 {
-  "version": "v0.3.1-adaptive-10K",
-  "mode": "ADAPTIVE_LIVE_10K - SMALL_1k_10k",
-  "frozen_hash": "d83fe34155adfabe",
+  "version": "v0.3.1-adaptive-V5-profit-based",
   "portfolio": 10000,
-  "tier": "SMALL_1k_10k",
-  "tier_config": {
-    "portfolio_min": 1000,
-    "portfolio_max": 10000,
-    "risk_pct": 0.01,
-    "max_pos": 2,
-    "max_per_pct": 0.5,
-    "daily_loss": 0.03,
-    "min_lot": 1,
-    "description": "1k-10k: 2 ตัว, 50%, risk 1.5%, lot 1 หุ้น"
-  },
   "live_params": {
-    "min_score": 75,
-    "risk_pct": 0.01,
-    "stop_atr_mult": 1.8,
-    "take_profit_atr_mult": 2.5,
+    "min_score": 90,
+    "risk_pct": 0.005,
+    "stop_atr_mult": 2.0,
+    "take_profit_atr_mult": 4.5,
     "max_positions": 2,
-    "max_per_position_pct": 0.5,
-    "daily_loss_limit_pct": 0.03,
+    "max_per_position_pct": 0.224,
+    "daily_loss_limit_pct": 0.02,
     "max_trades_per_day": 2
   },
-  "applied_at": "2026-10-18T13:08:16.486060+00:00",
-  "read_only": false,
-  "broker_enabled": true,
-  "auto_adjust": true,
-  "audit": "append-only audit.log",
-  "fixes": "FIX 11 points",
-  "fix_1_3_applied": {
-    "at": "2026-10-18T13:41:41.827040+00:00",
-    "fix1": "MSFT -0.53% -> 27% allocation (was 52%)",
-    "fix2": "Lot 83 same -> PTT 69, AOT 37, CPALL 46, SCB 27 per ATR",
-    "fix3": "THB portfolio use PTT/AOT/CPALL not AAPL/MSFT",
-    "profit_based_rules_updated": "loss -1-0% -8%, loss <-1% -25% to make loser reduce clearly"
-  },
   "stocks": {
-    "SET": [
-      "PTT",
-      "AOT",
-      "CPALL",
-      "SCB",
-      "DELTA",
-      "ADVANC",
-      "BDMS",
-      "PTTEP"
-    ],
+    "SET": ["SCB", "DELTA", "ADVANC", "PTTEP", "PTT"],
     "prices": {
-      "PTT": 32.5,
-      "AOT": 58.25,
-      "CPALL": 62.0,
-      "SCB": 110.0,
-      "DELTA": 80.0,
-      "ADVANC": 220.0,
-      "BDMS": 28.0,
-      "PTTEP": 150.0
+      "SCB": 147.0,
+      "DELTA": 248.0,
+      "ADVANC": 331.0,
+      "PTTEP": 157.0,
+      "PTT": 41.0,
+      "AOT": 57.75,
+      "CPALL": 43.5,
+      "BDMS": 19.2
     },
     "atr": {
-      "PTT": 0.8,
-      "AOT": 1.5,
-      "CPALL": 1.2,
-      "SCB": 2.0,
-      "DELTA": 2.0,
-      "ADVANC": 2.5,
-      "BDMS": 0.6,
-      "PTTEP": 3.0
+      "SCB": 2.8,
+      "DELTA": 6.5,
+      "ADVANC": 4.2,
+      "PTTEP": 3.2,
+      "PTT": 0.95,
+      "AOT": 1.85,
+      "CPALL": 1.10,
+      "BDMS": 0.55
+    },
+    "allocation_V5_final": {
+      "SCB.BK": 22.4,
+      "DELTA.BK": 22.4,
+      "ADVANC.BK": 20.6,
+      "PTTEP.BK": 20.6,
+      "PTT.BK": 14.0
+    },
+    "lot_V5": {
+      "SCB.BK": "8 sh Cost 1176฿ Max 2243฿",
+      "DELTA.BK": "3 sh Cost 744฿ Max 2243฿",
+      "ADVANC.BK": "5 sh Cost 1655฿ Max 2056฿",
+      "PTTEP.BK": "7 sh Cost 1099฿ Max 2056฿",
+      "PTT.BK": "26 sh Cost 1066฿ Max 1402฿"
     }
   },
-  "lot_examples": {
-    "formula": "shares = (portfolio * risk%) / (1.8 * ATR) = (10000*1%)/(1.8*ATR)",
-    "PTT_ATR0.8": "100/1.44=69 sh cost 2242฿",
-    "AOT_ATR1.5": "100/2.7=37 sh cost 2155฿",
-    "CPALL_ATR1.2": "100/2.16=46 sh cost 2852฿",
-    "SCB_ATR2.0": "100/3.6=27 sh cost 2970฿",
-    "AAPL_ATR2.1": "100/3.78=26 sh cost $4810 = 173k THB เกินพอร์ต -> ต้องใช้ USD portfolio",
-    "MSFT_ATR4.5": "100/8.1=12 sh cost $4514 = 162k THB เกินพอร์ต"
+  "backtest_verified": {
+    "V4": "P&L 1771 (17.7%) 126 trades WR 42.1% PF 1.44 DD 5.4%",
+    "V5": "Allocation ตาม Profit - SCB/DELTA INCREASE_MORE +20%, PTT DECREASE -25%",
+    "filter": "EMA50>EMA200 + Close>EMA200 + Volume>avg20*0.8 + MIN_SCORE 90 + SL2.0 TP4.5"
   }
 }
