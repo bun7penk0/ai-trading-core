@@ -110,28 +110,6 @@ _sched_thr = None
 def _sched_loop(config_path, trade_log_path, min_trades, check_hours):
     interval = max(60, int(check_hours) * 3600)
     log.info(f"scheduler started interval={interval}s min_trades={min_trades}")
-    
-    import time
-    next_rebalance = time.time() + interval
-
-    while not _sched_stop.is_set():
-        # รอแค่ 60 วิ แล้วตื่นมา
-        if _sched_stop.wait(60):
-            break
-        
-        # ยิง heartbeat ทุก 60 วิ เพื่อไม่ให้ขึ้น stale
-        try:
-            update_heartbeat()
-        except Exception:
-            pass
-
-        # ถ้าครบ 24 ชม. จริงๆ ค่อยทำ rebalance
-        if time.time() >= next_rebalance:
-            log.info("scheduler tick (TODO: rebalance)")
-            # TODO: ใส่โค้ด rebalance จริงตรงนี้
-            next_rebalance = time.time() + interval _sched_loop(config_path, trade_log_path, min_trades, check_hours):
-    interval = max(60, int(check_hours) * 3600)
-    log.info(f"scheduler started interval={interval}s min_trades={min_trades}")
     while not _sched_stop.wait(interval):
         log.info("scheduler tick (TODO: rebalance logic)")
 
