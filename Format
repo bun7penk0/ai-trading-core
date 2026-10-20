@@ -1,0 +1,24 @@
+# Format V5 - Code & Log Formatting Rules
+# ใช้กับ ai_trading_core_v031_draft
+
+## Code Style
+- Python: Black formatter, line length 100
+- JSON: indent 2, ensure_ascii=False (ให้พิมพ์ไทยได้)
+- Log: JSON structured logging
+
+## Log Format (Railway)
+{"level":"info|warn|error", "symbol":"SCB.BK", "message":"...", "shares":15, "cost":2205}
+
+## Allocation Format
+- allocation_V5_final: { "SCB.BK": 22.4, ... } sum = 100.0
+- prices: THB SET stocks only (ไม่เอา US ตอนพอร์ต 10k)
+- atr: ATR 14-day
+
+## File Naming
+- LIVE_CONFIG_10K.json -> V5 hash 2d1e37ec7288c756
+- ADAPTIVE_TIERS.json = copy จาก LIVE_CONFIG_10K.json
+- trade_log.json -> เก็บใน /app/data (Railway Volume)
+
+## Validation
+- ก่อน push: python scripts/verify_v5.py
+- ต้องได้: ✅ Config PASS + 🎉 ALL CHECKS PASSED
