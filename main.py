@@ -167,9 +167,65 @@ def load_live_config():
 
 live_config = load_live_config()
 
-allocation_v5 = {"SCB.BK":0.224,"DELTA.BK":0.224,"ADVANC.BK":0.206,"PTTEP.BK":0.206,"PTT.BK":0.14}
-real_prices = {"SCB.BK":147,"DELTA.BK":248,"ADVANC.BK":331,"PTTEP.BK":157,"PTT.BK":41}
-real_atr = {"SCB.BK":2.8,"DELTA.BK":6.5,"ADVANC.BK":4.2,"PTTEP.BK":3.2,"PTT.BK":0.95}
+allocation_v5 = {
+  "version": "v0.3.2-adaptive-V5-US-10stocks",
+  "portfolio": 10000,
+  "max_pos": 5,
+  "max_pct": 0.22,
+  "allocation_v5": {
+    "NVDA": 0.1,
+    "META": 0.1,
+    "MSFT": 0.1,
+    "AAPL": 0.1,
+    "TSLA": 0.1,
+    "GOOGL": 0.1,
+    "AMZN": 0.1,
+    "AMD": 0.1,
+    "NFLX": 0.1,
+    "AVGO": 0.1
+  },
+  "initial_prices": {
+    "NVDA": 175,
+    "META": 500,
+    "MSFT": 430,
+    "AAPL": 225,
+    "TSLA": 250,
+    "GOOGL": 175,
+    "AMZN": 200,
+    "AMD": 160,
+    "NFLX": 700,
+    "AVGO": 210
+  },
+  "initial_atr": {
+    "NVDA": 5.2,
+    "META": 8.5,
+    "MSFT": 4.8,
+    "AAPL": 2.8,
+    "TSLA": 6.5,
+    "GOOGL": 3.2,
+    "AMZN": 3.5,
+    "AMD": 4.1,
+    "NFLX": 12.0,
+    "AVGO": 4.5
+  },
+  "mt5_server": "Exness-MT5Trial17",
+  "mt5_login": "464110288",
+  "symbols": [
+    "NVDA",
+    "META",
+    "MSFT",
+    "AAPL",
+    "TSLA",
+    "GOOGL",
+    "AMZN",
+    "AMD",
+    "NFLX",
+    "AVGO"
+  ]
+}
+
+real_prices = 
+real_atr = 
 PORTFOLIO = 10000
 
 risk_gate = RiskGate()
