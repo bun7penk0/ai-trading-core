@@ -1,26 +1,26 @@
 # main.py
 # -*- coding: utf-8 -*-
 """
-Adaptive V5 US-10stocks Trading Bot
-Version: v0.3.2-adaptive-V5-US-10stocks
+Adaptive V5 US-10stocks Trading Bot — Alpaca Edition
+Version: v0.3.3-Alpaca
 """
 
+import os
 import time
 import logging
 from datetime import datetime
 
-try:
-    import MetaTrader5 as mt5
-    MT5_AVAILABLE = True
-except ImportError:
-    MT5_AVAILABLE = False
-    print("[WARN] MetaTrader5 not installed. Running in SIMULATION mode.")
+from alpaca.trading.client import TradingClient
+from alpaca.trading.requests import MarketOrderRequest
+from alpaca.trading.enums import OrderSide, TimeInForce
+from alpaca.data.historical import StockHistoricalDataClient
+from alpaca.data.requests import StockLatestQuoteRequest
 
 # ============================================================
-# CONFIG
+# CONFIG (อ่านจาก Environment Variables บน Railway)
 # ============================================================
 CONFIG = {
-    "version": "v0.3.2-adaptive-V5-US-10stocks",
+    "version": "v0.3.3-Alpaca",
     "portfolio": 10000,
     "max_pos": 5,
     "max_pct": 0.22,
@@ -28,18 +28,17 @@ CONFIG = {
         "NVDA": 0.1, "META": 0.1, "MSFT": 0.1, "AAPL": 0.1, "TSLA": 0.1,
         "GOOGL": 0.1, "AMZN": 0.1, "AMD": 0.1, "NFLX": 0.1, "AVGO": 0.1,
     },
-    "initial_prices": {
-        "NVDA": 175, "META": 500, "MSFT": 430, "AAPL": 225, "TSLA": 250,
-        "GOOGL": 175, "AMZN": 200, "AMD": 160, "NFLX": 700, "AVGO": 210,
-    },
     "initial_atr": {
         "NVDA": 5.2, "META": 8.5, "MSFT": 4.8, "AAPL": 2.8, "TSLA": 6.5,
         "GOOGL": 3.2, "AMZN": 3.5, "AMD": 4.1, "NFLX": 12.0, "AVGO": 4.5,
     },
-    "mt5_server": "Exness-MT5Trial17",
-    "mt5_login": "464110288",
-    "symbols": ["NVDA", "META", "MSFT", "AAPL", "TSLA",
-                "GOOGL", "AMZN", "AMD", "NFLX", "AVGO"],
+    "symbols": [s.strip() for s in os.getenv(
+        "ALPACA_SYMBOLS",
+        "NVDA,META,MSFT,AAPL,TSLA,GOOGL,AMZN,AMD,NFLX,AVGO"
+    ).split(",") if s.strip()],
+    "alpaca_api_key": os.getenv("ALPACA_API_KEY", ""),
+    "alpaca_secret_key": os.getenv("ALPACA_SECRET_KEY", ""),
+    "alpaca_paper": os.getenv("ALPACA_PAPER", "true").lower() in ("true", "1", "yes"),
 }
 
 # ============================================================
@@ -50,86 +49,92 @@ logging.basicConfig(
     format="%(asctime)s | %(levelname)-7s | %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
-log = logging.getLogger("ADAPTIVE-V5")
+log = logging.getLogger("ADAPTIVE-ALPACA")
 
 
 # ============================================================
-# MT5 SETUP
+# ALPACA CLIENTS
 # ============================================================
-def init_mt5() -> bool:
-    if not MT5_AVAILABLE:
-        return False
-    if not mt5.initialize():
-        log.error(f"mt5.initialize() failed: {mt5.last_error()}")
-        return False
-    acc = mt5.account_info()
-    if acc is None:
-        log.error("Cannot retrieve account info.")
-        mt5.shutdown()
-        return False
-    log.info(f"Connected: {acc.login} @ {acc.server} | Balance: {acc.balance}")
-    return True
+def init_clients():
+    if not CONFIG["alpaca_api_key"] or not CONFIG["alpaca_secret_key"]:
+        raise ValueError("Missing ALPACA_API_KEY / ALPACA_SECRET_KEY in environment")
+
+    trading = TradingClient(
+        CONFIG["alpaca_api_key"],
+        CONFIG["alpaca_secret_key"],
+        paper=CONFIG["alpaca_paper"],
+    )
+    data = StockHistoricalDataClient(
+        CONFIG["alpaca_api_key"],
+        CONFIG["alpaca_secret_key"],
+    )
+    account = trading.get_account()
+    log.info(f"Connected: {account.account_number} | "
+             f"Paper={CONFIG['alpaca_paper']} | "
+             f"Equity={account.equity} | "
+             f"BuyingPower={account.buying_power}")
+    return trading, data
+
+
+# ============================================================
+# PRICE HELPER
+# ============================================================
+def get_latest_price(data_client, symbol: str) -> float:
+    try:
+        req = StockLatestQuoteRequest(symbol_or_symbols=symbol)
+        quote = data_client.get_stock_latest_quote(req)
+        q = quote.get(symbol)
+        if q and q.ask_price and q.bid_price:
+            return float((q.ask_price + q.bid_price) / 2)
+    except Exception as e:
+        log.warning(f"Quote fail {symbol}: {e}")
+    return 0.0
 
 
 # ============================================================
 # POSITION SIZING
 # ============================================================
-def calc_lot_size(symbol: str, price: float, atr: float,
-                  equity: float, alloc_pct: float) -> float:
-    """Risk-based lot sizing (1R = 1.5 * ATR stop distance)."""
-    risk_per_trade = equity * alloc_pct * 0.01  # 1% of allocated capital
+def calc_qty(price: float, atr: float, equity: float, alloc_pct: float) -> int:
+    """Risk 1% of allocated capital, stop = 1.5 * ATR."""
+    if price <= 0 or atr <= 0:
+        return 0
+    risk_per_trade = equity * alloc_pct * 0.01
     stop_distance = atr * 1.5
-    if stop_distance <= 0 or price <= 0:
-        return 0.0
-    shares = risk_per_trade / stop_distance
-    lots = shares / price
-    return max(round(lots, 2), 0.01)
+    shares = int(risk_per_trade / stop_distance)
+    # Cap by max_pct of equity
+    max_shares = int((equity * CONFIG["max_pct"]) / price)
+    return max(0, min(shares, max_shares))
 
 
 # ============================================================
-# SIGNAL (placeholder – adapt to your strategy)
+# SIGNAL (placeholder — เติมกลยุทธ์จริงตรงนี้)
 # ============================================================
 def get_signal(symbol: str) -> str:
-    """
-    Returns 'BUY', 'SELL', or 'HOLD'.
-    TODO: implement real indicator logic (EMA cross, RSI, etc.)
-    """
+    """Returns 'BUY', 'SELL', or 'HOLD'."""
+    # TODO: EMA cross / RSI / MACD
     return "HOLD"
 
 
 # ============================================================
-# TRADE EXECUTION
+# ORDER
 # ============================================================
-def place_order(symbol: str, side: str, lot: float, price: float):
-    if not MT5_AVAILABLE:
-        log.info(f"[SIM] {side} {lot} {symbol} @ {price}")
+def place_order(trading_client, symbol: str, side: str, qty: int):
+    if qty <= 0:
         return None
-
-    order_type = mt5.ORDER_TYPE_BUY if side == "BUY" else mt5.ORDER_TYPE_SELL
-    tick = mt5.symbol_info_tick(symbol)
-    if tick is None:
-        log.warning(f"No tick for {symbol}")
+    try:
+        order = trading_client.submit_order(
+            MarketOrderRequest(
+                symbol=symbol,
+                qty=qty,
+                side=OrderSide.BUY if side == "BUY" else OrderSide.SELL,
+                time_in_force=TimeInForce.DAY,
+            )
+        )
+        log.info(f"Order OK {symbol} {side} {qty} @ market | id={order.id}")
+        return order
+    except Exception as e:
+        log.error(f"Order failed {symbol} {side} {qty}: {e}")
         return None
-
-    price = tick.ask if side == "BUY" else tick.bid
-    request = {
-        "action": mt5.TRADE_ACTION_DEAL,
-        "symbol": symbol,
-        "volume": lot,
-        "type": order_type,
-        "price": price,
-        "deviation": 20,
-        "magic": 20250302,
-        "comment": "adaptive-v5",
-        "type_time": mt5.ORDER_TIME_GTC,
-        "type_filling": mt5.ORDER_FILLING_IOC,
-    }
-    result = mt5.order_send(request)
-    if result is None or result.retcode != mt5.TRADE_RETCODE_DONE:
-        log.error(f"Order failed {symbol}: {result}")
-        return None
-    log.info(f"Order OK {symbol} {side} {lot} @ {price}")
-    return result
 
 
 # ============================================================
@@ -137,65 +142,60 @@ def place_order(symbol: str, side: str, lot: float, price: float):
 # ============================================================
 def main():
     log.info(f"=== Starting {CONFIG['version']} ===")
+    log.info(f"Config loaded version={CONFIG['version']}")
+    log.info(f"Symbols: {CONFIG['symbols']}")
 
-    live = init_mt5()
-    if not live:
-        log.warning("Running in SIMULATION mode.")
+    trading, data = init_clients()
 
-    # Portfolio state
-    equity = CONFIG["portfolio"]
-    open_positions = {}  # symbol -> {side, lot, entry}
-    max_pos = CONFIG["max_pos"]
-    max_pct = CONFIG["max_pct"]
+    open_symbols = set()
+    try:
+        positions = trading.get_all_positions()
+        open_symbols = {p.symbol for p in positions}
+        log.info(f"Existing positions: {open_symbols or 'none'}")
+    except Exception as e:
+        log.warning(f"Cannot fetch positions: {e}")
 
     try:
         while True:
+            try:
+                account = trading.get_account()
+                equity = float(account.equity)
+            except Exception as e:
+                log.error(f"Account fetch failed: {e}")
+                time.sleep(30)
+                continue
+
             for symbol in CONFIG["symbols"]:
-                if symbol in open_positions:
+                if symbol in open_symbols:
                     continue
-                if len(open_positions) >= max_pos:
+                if len(open_symbols) >= CONFIG["max_pos"]:
                     break
 
-                price = CONFIG["initial_prices"].get(symbol, 0)
+                price = get_latest_price(data, symbol)
                 atr = CONFIG["initial_atr"].get(symbol, 0)
 
-                if live:
-                    tick = mt5.symbol_info_tick(symbol)
-                    if tick:
-                        price = tick.last or tick.bid
-                    info = mt5.symbol_info(symbol)
-                    # Optional: compute real ATR from bars here
+                if price <= 0:
+                    log.warning(f"{symbol} no price, skip")
+                    continue
 
                 signal = get_signal(symbol)
+                log.info(f"{symbol} price={price:.2f} atr={atr} signal={signal}")
+
                 if signal in ("BUY", "SELL"):
-                    lot = calc_lot_size(
-                        symbol, price, atr, equity,
-                        CONFIG["allocation_v5"].get(symbol, 0.1),
-                    )
-                    # Cap by max_pct of equity
-                    max_notional = equity * max_pct
-                    lot = min(lot, max_notional / price if price else lot)
+                    qty = calc_qty(price, atr, equity,
+                                   CONFIG["allocation_v5"].get(symbol, 0.1))
+                    if qty > 0:
+                        order = place_order(trading, symbol, signal, qty)
+                        if order:
+                            open_symbols.add(symbol)
 
-                    if lot > 0:
-                        result = place_order(symbol, signal, lot, price)
-                        if result or not live:
-                            open_positions[symbol] = {
-                                "side": signal, "lot": lot, "entry": price,
-                                "time": datetime.now(),
-                            }
-
-            # Log status
-            log.info(f"Equity: {equity:.2f} | Open: {len(open_positions)}/"
-                     f"{max_pos} | Positions: {list(open_positions.keys())}")
-
-            # Scan interval
+            log.info(f"Equity={equity:.2f} | Open={len(open_symbols)}/"
+                     f"{CONFIG['max_pos']} | {sorted(open_symbols)}")
             time.sleep(60)
 
     except KeyboardInterrupt:
         log.info("Stopped by user.")
     finally:
-        if live:
-            mt5.shutdown()
         log.info("=== Shutdown complete ===")
 
 
