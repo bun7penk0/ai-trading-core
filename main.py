@@ -2,27 +2,26 @@
 # -*- coding: utf-8 -*-
 """
 Adaptive V5 US-10stocks Trading Bot — Alpaca Edition
-Version: v0.3.4-Alpaca (Fixed Data Fetching)
+Version: v0.3.5-Alpaca (Robust Snapshot Data Fetching)
 """
 
 import os
 import time
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import MarketOrderRequest
 from alpaca.trading.enums import OrderSide, TimeInForce
 from alpaca.data.historical import StockHistoricalDataClient
-# --- เปลี่ยน Import สำหรับดึง Bar ---
-from alpaca.data.requests import StockBarsRequest
-from alpaca.data.timeframe import TimeFrame
+# --- เปลี่ยน Import สำหรับดึง Snapshot ---
+from alpaca.data.requests import StockSnapshotRequest
 
 # ============================================================
 # CONFIG
 # ============================================================
 CONFIG = {
-    "version": "v0.3.4-Alpaca",
+    "version": "v0.3.5-Alpaca",
     "portfolio": 10000,
     "max_pos": 5,
     "max_pct": 0.22,
@@ -77,36 +76,35 @@ def init_clients():
     return trading, data
 
 # ============================================================
-# PRICE HELPER (Fixed: ใช้ Bars แทน Quote)
+# PRICE HELPER (ใช้ Snapshot ดึงราคาปิดวันล่าสุด)
 # ============================================================
-def get_latest_bar(data_client, symbol: str):
-    """ดึงแท่งเทียนล่าสุดคืนค่า (close_price, atr_approx)"""
+def get_latest_price(data_client, symbol: str):
+    """ดึงราคาปิดของวันซื้อขายล่าสุด พร้อม fallback feed"""
     try:
-        # ขอย้อนหลัง 3 วัน เพื่อกันวันหยุด/เสาร์อาทิตย์
-        request_params = StockBarsRequest(
-            symbol_or_symbols=symbol,
-            timeframe=TimeFrame.Day, # ใช้ Day เพื่อลด Rate Limit
-            start=datetime.now() - timedelta(days=3),
-            limit=2, # เอา 2 แท่งล่าสุดมาคำนวณ ATR แบบง่าย
-            feed="iex", # บัญชีฟรี
-            adjustment="raw"
-        )
-        bars = data_client.get_stock_bars(request_params)
+        req = StockSnapshotRequest(symbol_or_symbols=symbol, feed="iex")
+        snapshot = data_client.get_stock_snapshot(req)
         
-        # ถ้า iex ไม่มีข้อมูล ให้ลอง sip (เผื่ออนาคตอัปเกรด)
-        if symbol not in bars or len(bars[symbol]) == 0:
-            request_params.feed = "sip"
-            bars = data_client.get_stock_bars(request_params)
-
-        if symbol in bars and len(bars[symbol]) > 0:
-            latest = bars[symbol][-1]
-            price = float(latest.close)
-            # คำนวณ ATR แบบบ้านๆ จาก High-Low ของแท่งล่าสุด
-            atr = float(latest.high - latest.low) if latest.high and latest.low else 0.0
-            return price, atr
+        if symbol in snapshot:
+            snap = snapshot[symbol]
+            # ลำดับการหาปราคา: Daily Bar -> Latest Trade -> Latest Quote -> Min Bar
+            if snap.daily_bar:
+                return float(snap.daily_bar.close)
+            elif snap.latest_trade:
+                return float(snap.latest_trade.price)
+            elif snap.latest_quote:
+                return float((snap.latest_quote.bid_price + snap.latest_quote.ask_price) / 2)
+            elif snap.minute_bar:
+                return float(snap.minute_bar.close)
+                
+        # Fallback: ถ้า IEX ไม่มีข้อมูล ลองขอผ่าน SIP
+        req.feed = "sip"
+        snapshot = data_client.get_stock_snapshot(req)
+        if symbol in snapshot and snapshot[symbol].daily_bar:
+            return float(snapshot[symbol].daily_bar.close)
+            
     except Exception as e:
-        log.warning(f"Bar fetch fail {symbol}: {e}")
-    return 0.0, 0.0
+        log.error(f"Snapshot fail {symbol}: {e}")
+    return 0.0
 
 # ============================================================
 # POSITION SIZING
@@ -181,12 +179,11 @@ def main():
                 if len(open_symbols) >= CONFIG["max_pos"]:
                     break
 
-                # --- ใช้ฟังก์ชันใหม่ ---
-                price, atr = get_latest_bar(data, symbol)
+                # --- ใช้ฟังก์ชัน Snapshot ---
+                price = get_latest_price(data, symbol)
                 
-                # ถ้าดึงราคาไม่ได้จริงๆ ให้ใช้ ATR เริ่มต้นจาก config
-                if atr == 0:
-                    atr = CONFIG["initial_atr"].get(symbol, 1.0)
+                # ใช้ ATR เริ่มต้นจาก config (เพราะ Snapshot ไม่มี High/Low ให้คำนวณง่ายๆ)
+                atr = CONFIG["initial_atr"].get(symbol, 1.0)
 
                 if price <= 0:
                     log.warning(f"{symbol} no price, skip")
@@ -206,9 +203,9 @@ def main():
             log.info(f"Equity={equity:.2f} | Open={len(open_symbols)}/"
                      f"{CONFIG['max_pos']} | {sorted(open_symbols)}")
             
-            # --- เปลี่ยนเวลาพักเป็น 15 นาที (900 วินาที) ---
-            log.info("Sleeping for 15 minutes...")
-            time.sleep(900)
+            # --- พัก 5 นาที (300 วินาที) เพื่อไม่ให้ถี่เกินไป ---
+            log.info("Sleeping for 5 minutes...")
+            time.sleep(300)
 
     except KeyboardInterrupt:
         log.info("Stopped by user.")
