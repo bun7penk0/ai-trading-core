@@ -2,44 +2,36 @@
 # -*- coding: utf-8 -*-
 """
 Adaptive V5 US-10stocks Trading Bot — Alpaca Edition
-Version: v0.3.5-Alpaca (Robust Snapshot Data Fetching)
+Version: v0.4.1 (Discord Integration)
 """
 
 import os
 import time
 import logging
-from datetime import datetime
+import requests
+from datetime import datetime, timedelta
 
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import MarketOrderRequest
 from alpaca.trading.enums import OrderSide, TimeInForce
 from alpaca.data.historical import StockHistoricalDataClient
-# --- เปลี่ยน Import สำหรับดึง Snapshot ---
-from alpaca.data.requests import StockSnapshotRequest
+from alpaca.data.requests import StockSnapshotRequest, StockBarsRequest
+from alpaca.data.timeframe import TimeFrame
 
 # ============================================================
 # CONFIG
 # ============================================================
 CONFIG = {
-    "version": "v0.3.5-Alpaca",
-    "portfolio": 10000,
+    "version": "v0.4.1",
     "max_pos": 5,
     "max_pct": 0.22,
-    "allocation_v5": {
-        "NVDA": 0.1, "META": 0.1, "MSFT": 0.1, "AAPL": 0.1, "TSLA": 0.1,
-        "GOOGL": 0.1, "AMZN": 0.1, "AMD": 0.1, "NFLX": 0.1, "AVGO": 0.1,
-    },
-    "initial_atr": {
-        "NVDA": 5.2, "META": 8.5, "MSFT": 4.8, "AAPL": 2.8, "TSLA": 6.5,
-        "GOOGL": 3.2, "AMZN": 3.5, "AMD": 4.1, "NFLX": 12.0, "AVGO": 4.5,
-    },
     "symbols": [s.strip() for s in os.getenv(
-        "ALPACA_SYMBOLS",
-        "NVDA,META,MSFT,AAPL,TSLA,GOOGL,AMZN,AMD,NFLX,AVGO"
+        "ALPACA_SYMBOLS", "NVDA,META,MSFT,AAPL,TSLA,GOOGL,AMZN,AMD,NFLX,AVGO"
     ).split(",") if s.strip()],
     "alpaca_api_key": os.getenv("ALPACA_API_KEY", ""),
     "alpaca_secret_key": os.getenv("ALPACA_SECRET_KEY", ""),
     "alpaca_paper": os.getenv("ALPACA_PAPER", "true").lower() in ("true", "1", "yes"),
+    "discord_webhook": os.getenv("DISCORD_WEBHOOK_URL", ""), # <--- เปลี่ยนเป็น Discord
 }
 
 # ============================================================
@@ -53,97 +45,145 @@ logging.basicConfig(
 log = logging.getLogger("ADAPTIVE-ALPACA")
 
 # ============================================================
+# NOTIFICATION (DISCORD)
+# ============================================================
+def send_discord(msg: str):
+    if not CONFIG["discord_webhook"]:
+        return
+    try:
+        # ส่งข้อความแบบ Embed สวยๆ ไปที่ Discord
+        payload = {
+            "embeds": [{
+                "title": "🤖 AI Trading Alert",
+                "description": msg,
+                "color": 3447003 # สีฟ้า
+            }]
+        }
+        requests.post(CONFIG["discord_webhook"], json=payload, timeout=5)
+    except Exception as e:
+        log.warning(f"Discord send failed: {e}")
+
+# ============================================================
 # ALPACA CLIENTS
 # ============================================================
 def init_clients():
     if not CONFIG["alpaca_api_key"] or not CONFIG["alpaca_secret_key"]:
-        raise ValueError("Missing ALPACA_API_KEY / ALPACA_SECRET_KEY in environment")
-
-    trading = TradingClient(
-        CONFIG["alpaca_api_key"],
-        CONFIG["alpaca_secret_key"],
-        paper=CONFIG["alpaca_paper"],
-    )
-    data = StockHistoricalDataClient(
-        CONFIG["alpaca_api_key"],
-        CONFIG["alpaca_secret_key"],
-    )
+        raise ValueError("Missing ALPACA keys")
+    
+    trading = TradingClient(CONFIG["alpaca_api_key"], CONFIG["alpaca_secret_key"], paper=CONFIG["alpaca_paper"])
+    data = StockHistoricalDataClient(CONFIG["alpaca_api_key"], CONFIG["alpaca_secret_key"])
+    
     account = trading.get_account()
-    log.info(f"Connected: {account.account_number} | "
-             f"Paper={CONFIG['alpaca_paper']} | "
-             f"Equity={account.equity} | "
-             f"BuyingPower={account.buying_power}")
+    log.info(f"Connected: {account.account_number} | Equity=${float(account.equity):,.2f}")
+    
+    # แจ้งเตือนตอนเริ่มระบบ
+    send_discord(f"✅ **Bot Started**\nVersion: {CONFIG['version']}\nEquity: ${float(account.equity):,.2f}")
     return trading, data
 
 # ============================================================
-# PRICE HELPER (ใช้ Snapshot ดึงราคาปิดวันล่าสุด)
+# DATA FETCHING
 # ============================================================
-def get_latest_price(data_client, symbol: str):
-    """ดึงราคาปิดของวันซื้อขายล่าสุด พร้อม fallback feed"""
+def get_market_data(data_client, symbol):
     try:
+        # 1. Snapshot
         req = StockSnapshotRequest(symbol_or_symbols=symbol, feed="iex")
-        snapshot = data_client.get_stock_snapshot(req)
+        snap = data_client.get_stock_snapshot(req)
         
-        if symbol in snapshot:
-            snap = snapshot[symbol]
-            # ลำดับการหาปราคา: Daily Bar -> Latest Trade -> Latest Quote -> Min Bar
-            if snap.daily_bar:
-                return float(snap.daily_bar.close)
-            elif snap.latest_trade:
-                return float(snap.latest_trade.price)
-            elif snap.latest_quote:
-                return float((snap.latest_quote.bid_price + snap.latest_quote.ask_price) / 2)
-            elif snap.minute_bar:
-                return float(snap.minute_bar.close)
-                
-        # Fallback: ถ้า IEX ไม่มีข้อมูล ลองขอผ่าน SIP
-        req.feed = "sip"
-        snapshot = data_client.get_stock_snapshot(req)
-        if symbol in snapshot and snapshot[symbol].daily_bar:
-            return float(snapshot[symbol].daily_bar.close)
-            
+        price, atr = 0.0, 0.0
+        if symbol in snap and snap[symbol].daily_bar:
+            bar = snap[symbol].daily_bar
+            price = float(bar.close)
+            atr = float(bar.high - bar.low)
+        
+        # 2. Bars
+        req_bars = StockBarsRequest(
+            symbol_or_symbols=symbol,
+            timeframe=TimeFrame.Day,
+            start=datetime.now() - timedelta(days=90),
+            feed="iex"
+        )
+        bars_resp = data_client.get_stock_bars(req_bars)
+        bars = bars_resp[symbol] if symbol in bars_resp else []
+        
+        return price, atr, bars
     except Exception as e:
-        log.error(f"Snapshot fail {symbol}: {e}")
-    return 0.0
+        log.error(f"Data fail {symbol}: {e}")
+        return 0.0, 0.0, []
 
 # ============================================================
-# POSITION SIZING
+# INDICATORS
 # ============================================================
-def calc_qty(price: float, atr: float, equity: float, alloc_pct: float) -> int:
-    if price <= 0 or atr <= 0:
-        return 0
-    risk_per_trade = equity * alloc_pct * 0.01
-    stop_distance = atr * 1.5
-    shares = int(risk_per_trade / stop_distance)
-    max_shares = int((equity * CONFIG["max_pct"]) / price)
-    return max(0, min(shares, max_shares))
+def calc_ema(prices, period):
+    if len(prices) < period: return 0.0
+    multiplier = 2 / (period + 1)
+    ema = sum(prices[:period]) / period
+    for p in prices[period:]:
+        ema = (p - ema) * multiplier + ema
+    return ema
+
+def calc_rsi(prices, period=14):
+    if len(prices) < period + 1: return 50.0
+    gains, losses = 0, 0
+    for i in range(1, period + 1):
+        diff = prices[-i] - prices[-i-1]
+        if diff > 0: gains += diff
+        else: losses -= diff
+    avg_gain = gains / period
+    avg_loss = losses / period
+    if avg_loss == 0: return 100.0
+    rs = avg_gain / avg_loss
+    return 100 - (100 / (1 + rs))
 
 # ============================================================
-# SIGNAL (Placeholder)
+# STRATEGY LOGIC
 # ============================================================
-def get_signal(symbol: str) -> str:
-    # TODO: EMA cross / RSI / MACD
+def get_signal(bars):
+    if not bars or len(bars) < 30: return "HOLD"
+    
+    closes = [float(b.close) for b in bars]
+    ema9_now = calc_ema(closes, 9)
+    ema21_now = calc_ema(closes, 21)
+    ema9_prev = calc_ema(closes[:-1], 9)
+    ema21_prev = calc_ema(closes[:-1], 21)
+    rsi = calc_rsi(closes, 14)
+    
+    if ema9_prev <= ema21_prev and ema9_now > ema21_now and rsi < 70:
+        return "BUY"
+    elif ema9_prev >= ema21_prev and ema9_now < ema21_now:
+        return "SELL"
+    elif rsi > 80:
+        return "SELL"
     return "HOLD"
 
 # ============================================================
-# ORDER
+# RISK & ORDER
 # ============================================================
-def place_order(trading_client, symbol: str, side: str, qty: int):
-    if qty <= 0:
-        return None
+def calc_qty(price, atr, equity):
+    if price <= 0 or atr <= 0: return 0
+    risk_amount = equity * 0.01
+    stop_dist = atr * 2.0
+    qty = int(risk_amount / stop_dist)
+    max_qty = int((equity * CONFIG["max_pct"]) / price)
+    return max(0, min(qty, max_qty))
+
+def place_order(trading_client, symbol, side, qty, price):
     try:
         order = trading_client.submit_order(
             MarketOrderRequest(
-                symbol=symbol,
-                qty=qty,
+                symbol=symbol, qty=qty,
                 side=OrderSide.BUY if side == "BUY" else OrderSide.SELL,
-                time_in_force=TimeInForce.DAY,
+                time_in_force=TimeInForce.DAY
             )
         )
-        log.info(f"Order OK {symbol} {side} {qty} @ market | id={order.id}")
+        # แจ้งเตือน Discord
+        emoji = "🟢" if side == "BUY" else "🔴"
+        msg = f"{emoji} **{side}** {qty} shares of **{symbol}** @ ~${price:.2f}"
+        log.info(msg)
+        send_discord(msg)
         return order
     except Exception as e:
-        log.error(f"Order failed {symbol} {side} {qty}: {e}")
+        log.error(f"Order failed {symbol}: {e}")
+        send_discord(f"❌ Order Failed: {symbol} {side} - {e}")
         return None
 
 # ============================================================
@@ -151,66 +191,53 @@ def place_order(trading_client, symbol: str, side: str, qty: int):
 # ============================================================
 def main():
     log.info(f"=== Starting {CONFIG['version']} ===")
-    log.info(f"Symbols: {CONFIG['symbols']}")
-
     trading, data = init_clients()
 
-    open_symbols = set()
+    open_positions = {}
     try:
-        positions = trading.get_all_positions()
-        open_symbols = {p.symbol for p in positions}
-        log.info(f"Existing positions: {open_symbols or 'none'}")
+        for p in trading.get_all_positions():
+            open_positions[p.symbol] = float(p.qty)
+        log.info(f"Existing positions: {open_positions or 'none'}")
     except Exception as e:
         log.warning(f"Cannot fetch positions: {e}")
 
     try:
         while True:
-            try:
-                account = trading.get_account()
-                equity = float(account.equity)
-            except Exception as e:
-                log.error(f"Account fetch failed: {e}")
-                time.sleep(30)
-                continue
-
+            account = trading.get_account()
+            equity = float(account.equity)
+            
             for symbol in CONFIG["symbols"]:
-                if symbol in open_symbols:
+                if len(open_positions) >= CONFIG["max_pos"] and symbol not in open_positions:
                     continue
-                if len(open_symbols) >= CONFIG["max_pos"]:
-                    break
-
-                # --- ใช้ฟังก์ชัน Snapshot ---
-                price = get_latest_price(data, symbol)
+                    
+                price, atr, bars = get_market_data(data, symbol)
                 
-                # ใช้ ATR เริ่มต้นจาก config (เพราะ Snapshot ไม่มี High/Low ให้คำนวณง่ายๆ)
-                atr = CONFIG["initial_atr"].get(symbol, 1.0)
-
                 if price <= 0:
                     log.warning(f"{symbol} no price, skip")
                     continue
+                
+                signal = get_signal(bars)
+                log.info(f"{symbol} | ${price:.2f} | ATR:{atr:.2f} | Sig:{signal}")
 
-                signal = get_signal(symbol)
-                log.info(f"{symbol} price={price:.2f} atr={atr:.2f} signal={signal}")
-
-                if signal in ("BUY", "SELL"):
-                    qty = calc_qty(price, atr, equity,
-                                   CONFIG["allocation_v5"].get(symbol, 0.1))
+                if signal == "BUY" and symbol not in open_positions:
+                    qty = calc_qty(price, atr, equity)
                     if qty > 0:
-                        order = place_order(trading, symbol, signal, qty)
-                        if order:
-                            open_symbols.add(symbol)
+                        order = place_order(trading, symbol, "BUY", qty, price)
+                        if order: open_positions[symbol] = qty
+                            
+                elif signal == "SELL" and symbol in open_positions:
+                    qty = int(open_positions[symbol])
+                    order = place_order(trading, symbol, "SELL", qty, price)
+                    if order: del open_positions[symbol]
 
-            log.info(f"Equity={equity:.2f} | Open={len(open_symbols)}/"
-                     f"{CONFIG['max_pos']} | {sorted(open_symbols)}")
-            
-            # --- พัก 5 นาที (300 วินาที) เพื่อไม่ให้ถี่เกินไป ---
-            log.info("Sleeping for 5 minutes...")
-            time.sleep(300)
+            log.info(f"Portfolio: Equity=${equity:,.2f} | Open: {len(open_positions)}/{CONFIG['max_pos']}")
+            log.info("Sleeping for 15 minutes...")
+            time.sleep(900)
 
     except KeyboardInterrupt:
-        log.info("Stopped by user.")
+        log.info("Stopped.")
     finally:
-        log.info("=== Shutdown complete ===")
+        log.info("=== Shutdown ===")
 
 if __name__ == "__main__":
     main()
