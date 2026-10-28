@@ -1,23 +1,23 @@
 # main.py
 # -*- coding: utf-8 -*-
 """
-Adaptive V5 US-10stocks Trading Bot — Alpaca Edition
-Version: v0.4.3 (Fixed ATR Fallback + Strict Sanity)
+Adaptive V5 US-10stocks Trading Bot — Hybrid Edition
+Version: v0.4.4 (Alpaca Trading + Yahoo Finance Data)
 """
 
 import os
-import re
 import time
 import logging
 import requests
 from datetime import datetime, timedelta, timezone
 
+# --- Alpaca Imports (สำหรับเทรดเท่านั้น) ---
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import MarketOrderRequest
 from alpaca.trading.enums import OrderSide, TimeInForce
-from alpaca.data.historical import StockHistoricalDataClient
-from alpaca.data.requests import StockLatestTradeRequest, StockBarsRequest
-from alpaca.data.timeframe import TimeFrame
+
+# --- Yahoo Finance Imports (สำหรับดึงข้อมูล) ---
+import yfinance as yf
 
 # ============================================================
 # CONFIG
@@ -26,7 +26,7 @@ def _env_bool(key: str, default: str = "false") -> bool:
     return os.getenv(key, default).strip().lower() in ("true", "1", "yes", "on")
 
 CONFIG = {
-    "version": "v0.4.3",
+    "version": "v0.4.4",
     "max_pos": 5,
     "max_pct": 0.22,
     "symbols": [s.strip().upper() for s in os.getenv(
@@ -36,14 +36,11 @@ CONFIG = {
     "alpaca_secret_key": os.getenv("ALPACA_SECRET_KEY", ""),
     "alpaca_paper": _env_bool("ALPACA_PAPER", "true"),
     "discord_webhook": os.getenv("DISCORD_WEBHOOK_URL", ""),
-    "allow_dummy_data": _env_bool("ALLOW_DUMMY_DATA", "false"),
     "price_sanity_check": _env_bool("PRICE_SANITY_CHECK", "true"),
-    "feed": os.getenv("ALPACA_FEED", "iex"),
     "loop_seconds": int(os.getenv("LOOP_SECONDS", "900")),
 }
 
 # --- Price sanity bands (lo, hi) ---
-# ปรับ NFLX ให้กว้างขึ้นรองรับกรณี split ในอนาคต
 PRICE_BANDS = {
     "NVDA":  (40, 500),
     "META":  (150, 1200),
@@ -53,7 +50,7 @@ PRICE_BANDS = {
     "GOOGL": (80, 500),
     "AMZN":  (80, 500),
     "AMD":   (50, 400),
-    "NFLX":  (400, 2000), # หาก NFLX split 10:1 ให้เปลี่ยนเป็น (40, 200)
+    "NFLX":  (400, 2000),
     "AVGO":  (150, 3000),
 }
 
@@ -65,27 +62,9 @@ logging.basicConfig(
     format="%(asctime)s | %(levelname)-7s | %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
-log = logging.getLogger("ADAPTIVE-ALPACA")
+log = logging.getLogger("ADAPTIVE-HYBRID")
 
-class StaleDataError(Exception): pass
 class PriceSanityError(Exception): pass
-
-# ============================================================
-# TICKER NORMALIZATION
-# ============================================================
-_ENTITY_RE = re.compile(r"entity-([A-Z][A-Z0-9\.\-]{0,6})", re.IGNORECASE)
-_TICKER_RE = re.compile(r"^[A-Z][A-Z0-9\.\-]{0,6}$")
-
-def normalize_ticker(raw: str) -> str:
-    if raw is None: return ""
-    s = str(raw).strip()
-    m = _ENTITY_RE.search(s)
-    if m: s = m.group(1)
-    s = s.upper().strip(" .")
-    if not _TICKER_RE.match(s):
-        log.error(f"TICKER_REJECT raw={raw!r} normalized={s!r}")
-        return ""
-    return s
 
 # ============================================================
 # NOTIFICATION
@@ -99,83 +78,79 @@ def send_discord(msg: str):
         log.warning(f"Discord send failed: {e}")
 
 # ============================================================
-# ALPACA CLIENTS
+# ALPACA CLIENT (Trading Only)
 # ============================================================
-def init_clients():
+def init_trading_client():
     if not CONFIG["alpaca_api_key"] or not CONFIG["alpaca_secret_key"]:
         raise ValueError("Missing ALPACA_API_KEY / ALPACA_SECRET_KEY")
 
     trading = TradingClient(CONFIG["alpaca_api_key"], CONFIG["alpaca_secret_key"], paper=CONFIG["alpaca_paper"])
-    data = StockHistoricalDataClient(CONFIG["alpaca_api_key"], CONFIG["alpaca_secret_key"])
-
     account = trading.get_account()
     equity = float(account.equity)
     log.info(f"Connected: {account.account_number} | Equity=${equity:,.2f} | paper={CONFIG['alpaca_paper']}")
-    send_discord(f"✅ **Bot Started** v{CONFIG['version']}\nEquity: ${equity:,.2f}\nSanity={CONFIG['price_sanity_check']}")
-    return trading, data
+    send_discord(f"✅ **Bot Started** v{CONFIG['version']}\nEquity: ${equity:,.2f}\n(Data via Yahoo Finance)")
+    return trading
 
 # ============================================================
-# DATA FETCHING
+# DATA FETCHING (Yahoo Finance)
 # ============================================================
-def get_latest_price(data_client, symbol: str) -> float:
+def get_market_data(symbol: str):
+    """
+    ดึงข้อมูลจาก Yahoo Finance แทน Alpaca IEX ที่เพี้ยน
+    """
     try:
-        req = StockLatestTradeRequest(symbol_or_symbols=symbol, feed=CONFIG["feed"])
-        trade = data_client.get_stock_latest_trade(req)
-        if symbol not in trade: raise StaleDataError(f"no trade returned for {symbol}")
-        t = trade[symbol]
-        price = float(t.price)
-        ts = t.timestamp
+        ticker = yf.Ticker(symbol)
+        # ดึงข้อมูล 3 เดือน (1d interval)
+        hist = ticker.history(period="3mo", interval="1d")
+        
+        if hist.empty:
+            raise ValueError("No data returned from Yahoo Finance")
+
+        # 1. ราคาล่าสุด (ใช้ Close ล่าสุด)
+        price = float(hist['Close'].iloc[-1])
+        
+        # 2. คำนวณ ATR (14 วัน)
+        atr = 0.0
+        if len(hist) >= 15:
+            hist['H-L'] = hist['High'] - hist['Low']
+            hist['H-PC'] = abs(hist['High'] - hist['Close'].shift(1))
+            hist['L-PC'] = abs(hist['Low'] - hist['Close'].shift(1))
+            hist['TR'] = hist[['H-L', 'H-PC', 'L-PC']].max(axis=1)
+            atr = float(hist['TR'].tail(14).mean())
+        else:
+            atr = float(hist['High'].iloc[-1] - hist['Low'].iloc[-1])
+
+        # Fallback ATR ถ้าเป็น 0
+        if atr <= 0:
+            atr = price * 0.02
+
+        # 3. แปลงข้อมูลเป็น List of Bars สำหรับส่งให้ Strategy
+        bars = []
+        for _, row in hist.iterrows():
+            # ใช้ SimpleNamespace จำลอง Object ให้เหมือนของ Alpaca
+            bar = type('Bar', (object,), {
+                'close': row['Close'],
+                'high': row['High'],
+                'low': row['Low'],
+                'open': row['Open'],
+                'volume': row['Volume']
+            })
+            bars.append(bar)
+
+        # --- Sanity Check ---
+        if CONFIG["price_sanity_check"] and symbol in PRICE_BANDS:
+            lo, hi = PRICE_BANDS[symbol]
+            if not (lo <= price <= hi):
+                raise PriceSanityError(f"{symbol} price={price} outside band ({lo},{hi})")
+
+        return price, atr, bars
+
     except Exception as e:
-        raise StaleDataError(f"{symbol}: {e}") from e
-
-    if not price or price < 1.0:
-        raise StaleDataError(f"{symbol}: invalid price={price}")
-
-    if CONFIG["price_sanity_check"] and symbol in PRICE_BANDS:
-        lo, hi = PRICE_BANDS[symbol]
-        if not (lo <= price <= hi):
-            raise PriceSanityError(f"{symbol} price={price} outside band ({lo},{hi}) — likely ticker map bug")
-    return price
-
-def get_bars(data_client, symbol: str, days: int = 90):
-    try:
-        req = StockBarsRequest(
-            symbol_or_symbols=symbol,
-            timeframe=TimeFrame.Day,
-            start=datetime.now(timezone.utc) - timedelta(days=days),
-            feed=CONFIG["feed"],
-        )
-        resp = data_client.get_stock_bars(req)
-        return resp[symbol] if symbol in resp else []
-    except Exception as e:
-        log.warning(f"Bars fail {symbol}: {e}")
-        return []
-
-def get_market_data(data_client, symbol: str):
-    price = get_latest_price(data_client, symbol)
-    bars = get_bars(data_client, symbol, days=90)
-    
-    atr = 0.0
-    if bars and len(bars) >= 15:
-        trs = []
-        for i in range(1, 15):
-            h = float(bars[-i].high); l = float(bars[-i].low)
-            c_prev = float(bars[-i - 1].close)
-            trs.append(max(h - l, abs(h - c_prev), abs(l - c_prev)))
-        atr = sum(trs) / len(trs)
-    elif bars:
-        b = bars[-1]
-        atr = float(b.high) - float(b.low)
-
-    # --- [FIX] ATR Fallback ป้องกัน ATR=0.00 ตอนข้อมูลว่าง ---
-    if atr <= 0:
-        atr = price * 0.02 # ใช้ 2% ของราคาเป็น Safety Margin
-        log.warning(f"ATR_FALLBACK {symbol} atr=2%({atr:.2f}) bars={len(bars)}")
-
-    return price, atr, bars
+        log.error(f"Yahoo Data fail {symbol}: {e}")
+        return None, None, None
 
 # ============================================================
-# INDICATORS & STRATEGY
+# INDICATORS
 # ============================================================
 def calc_ema(prices, period):
     if len(prices) < period: return 0.0
@@ -191,16 +166,22 @@ def calc_rsi(prices, period=14):
         diff = prices[-i] - prices[-i - 1]
         if diff > 0: gains += diff
         else: losses -= diff
-    avg_gain = gains / period; avg_loss = losses / period
+    avg_gain = gains / period
+    avg_loss = losses / period
     if avg_loss == 0: return 100.0
     rs = avg_gain / avg_loss
     return 100 - (100 / (1 + rs))
 
+# ============================================================
+# STRATEGY
+# ============================================================
 def get_signal(bars):
     if not bars or len(bars) < 30: return "HOLD"
     closes = [float(b.close) for b in bars]
-    ema9_now = calc_ema(closes, 9); ema21_now = calc_ema(closes, 21)
-    ema9_prev = calc_ema(closes[:-1], 9); ema21_prev = calc_ema(closes[:-1], 21)
+    ema9_now = calc_ema(closes, 9)
+    ema21_now = calc_ema(closes, 21)
+    ema9_prev = calc_ema(closes[:-1], 9)
+    ema21_prev = calc_ema(closes[:-1], 21)
     rsi = calc_rsi(closes, 14)
 
     if ema9_prev <= ema21_prev and ema9_now > ema21_now and rsi < 70: return "BUY"
@@ -247,14 +228,15 @@ def sync_positions(trading_client) -> dict:
 # MAIN LOOP
 # ============================================================
 def main():
-    log.info(f"=== Starting {CONFIG['version']} ===")
-    trading, data = init_clients()
+    log.info(f"=== Starting {CONFIG['version']} (Hybrid: Alpaca Trade + Yahoo Data) ===")
+    trading = init_trading_client()
 
     try:
         while True:
+            # เช็คเวลาตลาดผ่าน Alpaca (แม่นยำที่สุด)
             clock = trading.get_clock()
             if not clock.is_open:
-                log.info(f"Market closed. Next open: {clock.next_open}. Sleeping 60s.")
+                log.info(f"Market closed. Next open: {clock.next_open.astimezone().strftime('%Y-%m-%d %H:%M')}. Sleeping 60s.")
                 time.sleep(60)
                 continue
 
@@ -262,22 +244,14 @@ def main():
             equity = float(account.equity)
             open_positions = sync_positions(trading)
 
-            for raw_symbol in CONFIG["symbols"]:
-                symbol = normalize_ticker(raw_symbol)
-                if not symbol: continue
-                if len(open_positions) >= CONFIG["max_pos"] and symbol not in open_positions: continue
+            for symbol in CONFIG["symbols"]:
+                if len(open_positions) >= CONFIG["max_pos"] and symbol not in open_positions:
+                    continue
 
-                try:
-                    price, atr, bars = get_market_data(data, symbol)
-                except PriceSanityError as e:
-                    log.error(f"PRICE_SANITY_FAIL {e} — SKIP {symbol}")
-                    send_discord(f"⚠️ **PRICE_SANITY_FAIL** `{symbol}` — skipped")
-                    continue
-                except StaleDataError as e:
-                    log.error(f"LIVE_FAIL {e} — SKIP {symbol}")
-                    continue
-                except Exception as e:
-                    log.error(f"UNKNOWN_FAIL {symbol}: {e} — SKIP")
+                price, atr, bars = get_market_data(symbol)
+                
+                if not price:
+                    log.warning(f"{symbol} no data from Yahoo, skip")
                     continue
 
                 signal = get_signal(bars)
@@ -288,12 +262,14 @@ def main():
                     if qty > 0:
                         order = place_order(trading, symbol, "BUY", qty, price)
                         if order: open_positions[symbol] = qty
+                            
                 elif signal == "SELL" and symbol in open_positions:
                     qty = int(open_positions[symbol])
                     order = place_order(trading, symbol, "SELL", qty, price)
                     if order: open_positions.pop(symbol, None)
 
             log.info(f"Portfolio: Equity=${equity:,.2f} | Open: {len(open_positions)}/{CONFIG['max_pos']}")
+            log.info(f"Sleeping {CONFIG['loop_seconds']}s...")
             time.sleep(CONFIG["loop_seconds"])
 
     except KeyboardInterrupt:
