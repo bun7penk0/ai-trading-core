@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Adaptive V5 US-10stocks Trading Bot — Hybrid Edition
-Version: v0.4.4 (Alpaca Trading + Yahoo Finance Data)
+Version: v0.4.5 (Alpaca Trading + Yahoo Finance Data + Timezone Fix)
 """
 
 import os
@@ -10,6 +10,7 @@ import time
 import logging
 import requests
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo  # ✅ แก้ไข: เพิ่ม import
 
 # --- Alpaca Imports (สำหรับเทรดเท่านั้น) ---
 from alpaca.trading.client import TradingClient
@@ -26,7 +27,7 @@ def _env_bool(key: str, default: str = "false") -> bool:
     return os.getenv(key, default).strip().lower() in ("true", "1", "yes", "on")
 
 CONFIG = {
-    "version": "v0.4.4",
+    "version": "v0.4.5",  # ✅ แก้ไข: bump version
     "max_pos": 5,
     "max_pct": 0.22,
     "symbols": [s.strip().upper() for s in os.getenv(
@@ -39,6 +40,10 @@ CONFIG = {
     "price_sanity_check": _env_bool("PRICE_SANITY_CHECK", "true"),
     "loop_seconds": int(os.getenv("LOOP_SECONDS", "900")),
 }
+
+# ✅ แก้ไข: timezone constants
+ET = ZoneInfo("America/New_York")
+UTC = ZoneInfo("UTC")
 
 # --- Price sanity bands (lo, hi) ---
 PRICE_BANDS = {
@@ -76,6 +81,46 @@ def send_discord(msg: str):
         requests.post(CONFIG["discord_webhook"], json=payload, timeout=5)
     except Exception as e:
         log.warning(f"Discord send failed: {e}")
+
+# ============================================================
+# ✅ แก้ไข: MARKET CLOCK HELPERS
+# ============================================================
+def is_market_open_fallback(now_et: datetime) -> bool:
+    """Fallback ตรวจสอบเวลาเปิด-ปิดตลาด แบบ manual (กรณี Alpaca clock ผิด)"""
+    if now_et.weekday() >= 5:  # เสาร์-อาทิตย์
+        return False
+    t = now_et.time()
+    return time(9, 30) <= t < time(16, 0)
+
+
+def check_market_status(trading) -> tuple[bool, datetime, str]:
+    """
+    คืนค่า (is_open, next_open_et, source)
+    - source = 'alpaca' หรือ 'fallback'
+    - ถ้า Alpaca แจ้งปิด แต่เวลา ET อยู่ในช่วงเปิดจริง → ใช้ fallback
+    """
+    now_et = datetime.now(ET)
+    
+    try:
+        clock = trading.get_clock()
+        is_open_alpaca = bool(clock.is_open)
+        # ✅ แก้ไข: astimezone(ET) แทน astimezone() เปล่า ๆ
+        next_open_et = clock.next_open.astimezone(ET)
+        
+        # ✅ แก้ไข: ถ้า Alpaca บอกปิด แต่ ET อยู่ในช่วงเปิด → override
+        if not is_open_alpaca and is_market_open_fallback(now_et):
+            log.warning(
+                f"⚠️ Alpaca clock says CLOSED but ET={now_et.strftime('%H:%M')} "
+                f"is within market hours → using fallback"
+            )
+            return True, now_et, "fallback"
+        
+        return is_open_alpaca, next_open_et, "alpaca"
+    
+    except Exception as e:
+        log.error(f"get_clock() failed: {e} → using fallback")
+        is_open = is_market_open_fallback(now_et)
+        return is_open, now_et, "fallback"
 
 # ============================================================
 # ALPACA CLIENT (Trading Only)
@@ -127,7 +172,6 @@ def get_market_data(symbol: str):
         # 3. แปลงข้อมูลเป็น List of Bars สำหรับส่งให้ Strategy
         bars = []
         for _, row in hist.iterrows():
-            # ใช้ SimpleNamespace จำลอง Object ให้เหมือนของ Alpaca
             bar = type('Bar', (object,), {
                 'close': row['Close'],
                 'high': row['High'],
@@ -233,13 +277,28 @@ def main():
 
     try:
         while True:
-            # เช็คเวลาตลาดผ่าน Alpaca (แม่นยำที่สุด)
-            clock = trading.get_clock()
-            if not clock.is_open:
-                log.info(f"Market closed. Next open: {clock.next_open.astimezone().strftime('%Y-%m-%d %H:%M')}. Sleeping 60s.")
+            # ✅ แก้ไข: ใช้ helper function + timezone ET + debug log
+            now_utc = datetime.now(UTC)
+            now_et  = datetime.now(ET)
+            
+            is_open, next_open_et, source = check_market_status(trading)
+            
+            log.info(
+                f"[CLOCK] UTC={now_utc.strftime('%H:%M')} | "
+                f"ET={now_et.strftime('%H:%M %Z')} | "
+                f"open={is_open} | src={source} | "
+                f"next_open_ET={next_open_et.strftime('%Y-%m-%d %H:%M %Z')}"
+            )
+
+            if not is_open:
+                log.info(
+                    f"Market closed. Next open: "
+                    f"{next_open_et.strftime('%Y-%m-%d %H:%M %Z')}. Sleeping 60s."
+                )
                 time.sleep(60)
                 continue
 
+            # --- ส่วนนี้เหมือนเดิมทุกอย่าง ---
             account = trading.get_account()
             equity = float(account.equity)
             open_positions = sync_positions(trading)
